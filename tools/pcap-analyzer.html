@@ -1,0 +1,2363 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PCAP NetLens — Network Packet Analyzer &amp; Sequence Drop Visualizer</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js with graceful canvas fallback -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <!-- Inter & JetBrains Mono Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'monospace'],
+                    }
+                }
+            }
+        };
+    </script>
+    <style>
+        body {
+            background-color: #0f172a;
+            color: #e2e8f0;
+        }
+        /* Custom Scrollbars */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #475569;
+        }
+        .mono-tabular {
+            font-variant-numeric: tabular-nums;
+        }
+        .hex-byte:hover {
+            background-color: rgba(56, 189, 248, 0.35);
+            color: #ffffff;
+            border-radius: 2px;
+        }
+        .seq-row-active {
+            background-color: rgba(14, 116, 144, 0.28) !important;
+            box-shadow: inset 3px 0 0 #38bdf8;
+        }
+        .pkt-row-active {
+            background-color: rgba(14, 116, 144, 0.32) !important;
+            box-shadow: inset 3px 0 0 #38bdf8;
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-200 font-sans antialiased min-h-screen flex flex-col selection:bg-sky-500/30 selection:text-sky-200">
+
+    <!-- Top Application Bar -->
+    <header class="sticky top-0 z-30 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 px-4 sm:px-6 py-3">
+        <div class="max-w-[1600px] mx-auto flex flex-wrap items-center justify-between gap-3">
+            <!-- Brand Identity -->
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-sky-500/20 shrink-0">
+                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                    </svg>
+                </div>
+                <div>
+                    <div class="flex items-center gap-2">
+                        <h1 class="text-base sm:text-lg font-bold tracking-tight text-white">PCAP NetLens</h1>
+                        <span class="px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider rounded-full bg-sky-500/15 text-sky-400 border border-sky-500/30">Deep Flow &amp; Drop Analyzer</span>
+                    </div>
+                    <p id="header-file-meta" class="text-xs text-slate-400 font-mono truncate max-w-[260px] sm:max-w-lg">Initializing sample capture...</p>
+                </div>
+            </div>
+
+            <!-- Action Controls -->
+            <div class="flex flex-wrap items-center gap-2">
+                <button id="btn-load-sample" type="button"
+                    class="px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-medium transition flex items-center gap-2 cursor-pointer">
+                    <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                    </svg>
+                    <span>Load Sample PCAP</span>
+                </button>
+
+                <label for="pcap-file-input"
+                    class="px-3.5 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold shadow-md shadow-sky-600/20 transition flex items-center gap-2 cursor-pointer">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
+                    </svg>
+                    <span>Open .PCAP File</span>
+                </label>
+                <input id="pcap-file-input" type="file" accept=".pcap,.cap,.dmp,application/vnd.tcpdump.pcap" class="hidden">
+            </div>
+        </div>
+    </header>
+
+    <!-- Status / Error Message Banner -->
+    <div id="status-banner" class="hidden max-w-[1600px] w-full mx-auto px-4 sm:px-6 pt-3">
+        <div id="status-banner-inner" class="rounded-xl px-4 py-2.5 text-xs font-medium flex items-center justify-between gap-3 border">
+            <span id="status-banner-text"></span>
+            <button id="status-banner-close" type="button" class="opacity-75 hover:opacity-100 font-bold px-2 cursor-pointer">&times;</button>
+        </div>
+    </div>
+
+    <!-- Main Container -->
+    <main id="main-drop-surface" class="flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 py-4 flex flex-col gap-5 relative">
+
+        <!-- Drag & Drop Overlay (appears when dragging file over window) -->
+        <div id="drag-overlay" class="hidden fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-6 pointer-events-none">
+            <div class="border-2 border-dashed border-sky-400 bg-slate-900/95 rounded-2xl p-10 text-center max-w-md shadow-2xl">
+                <div class="w-14 h-14 mx-auto mb-4 rounded-2xl bg-sky-500/20 text-sky-400 flex items-center justify-center">
+                    <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                    </svg>
+                </div>
+                <h2 class="text-lg font-bold text-white mb-1">Drop Binary PCAP File</h2>
+                <p class="text-xs text-slate-400">Supports Libpcap microsecond &amp; nanosecond captures (Ethernet II &amp; Raw IP)</p>
+            </div>
+        </div>
+
+        <!-- Navigation Tabs Bar -->
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
+            <nav class="inline-flex flex-wrap rounded-xl bg-slate-900 p-1 border border-slate-800 gap-1" role="tablist">
+                <button id="tab-btn-overview" type="button" data-tab="overview"
+                    class="nav-tab-btn px-3.5 py-2 rounded-lg text-xs sm:text-sm font-semibold transition flex items-center gap-2 bg-sky-600 text-white shadow-sm cursor-pointer">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path>
+                    </svg>
+                    <span>Overview &amp; Charts</span>
+                </button>
+
+                <button id="tab-btn-sequence" type="button" data-tab="sequence"
+                    class="nav-tab-btn px-3.5 py-2 rounded-lg text-xs sm:text-sm font-semibold transition flex items-center gap-2 text-slate-400 hover:text-white cursor-pointer">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path>
+                    </svg>
+                    <span>Sequence &amp; Drop Analysis</span>
+                    <span id="badge-tab-drops" class="px-1.5 py-0.5 text-[10px] font-mono rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40">0 drops</span>
+                </button>
+
+                <button id="tab-btn-packets" type="button" data-tab="packets"
+                    class="nav-tab-btn px-3.5 py-2 rounded-lg text-xs sm:text-sm font-semibold transition flex items-center gap-2 text-slate-400 hover:text-white cursor-pointer">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path>
+                    </svg>
+                    <span>Packet List &amp; Inspector</span>
+                    <span id="badge-tab-packets" class="px-1.5 py-0.5 text-[10px] font-mono rounded-full bg-slate-800 text-slate-300 border border-slate-700">0</span>
+                </button>
+            </nav>
+
+            <!-- Capture Drop Strip -->
+            <div class="flex items-center gap-2 text-xs font-mono text-slate-400">
+                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span id="capture-strip-summary">Ready • Drag &amp; drop any .pcap file anywhere</span>
+            </div>
+        </div>
+
+        <!-- ===================================================================== -->
+        <!-- TAB 1: OVERVIEW & CHARTS                                              -->
+        <!-- ===================================================================== -->
+        <section id="panel-overview" class="tab-panel flex flex-col gap-5">
+            <!-- KPI Cards -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm">
+                    <div class="text-xs font-medium uppercase tracking-wider text-slate-400 mb-1">Total Packets</div>
+                    <div id="kpi-total-packets" class="text-2xl font-bold text-white font-mono mono-tabular">0</div>
+                    <div id="kpi-duration" class="text-xs text-slate-400 font-mono mt-1">Duration: 0.000 s</div>
+                </div>
+
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm">
+                    <div class="text-xs font-medium uppercase tracking-wider text-slate-400 mb-1">Captured Bytes</div>
+                    <div id="kpi-total-bytes" class="text-2xl font-bold text-sky-400 font-mono mono-tabular">0 B</div>
+                    <div id="kpi-throughput" class="text-xs text-slate-400 font-mono mt-1">Avg Rate: 0 B/s</div>
+                </div>
+
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm">
+                    <div class="text-xs font-medium uppercase tracking-wider text-slate-400 mb-1">TCP Flows</div>
+                    <div id="kpi-tcp-flows" class="text-2xl font-bold text-emerald-400 font-mono mono-tabular">0</div>
+                    <div id="kpi-endpoints" class="text-xs text-slate-400 font-mono mt-1">0 unique IP endpoints</div>
+                </div>
+
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm">
+                    <div class="text-xs font-medium uppercase tracking-wider text-slate-400 mb-1">Detected Drops / Retransmits</div>
+                    <div class="flex items-baseline gap-2">
+                        <span id="kpi-drops-count" class="text-2xl font-bold text-rose-400 font-mono mono-tabular">0</span>
+                        <span id="kpi-retrans-sub" class="text-xs font-mono text-amber-400">0 retransmits</span>
+                    </div>
+                    <div id="kpi-drop-split" class="text-xs text-slate-400 font-mono mt-1">Client: 0 • Server: 0</div>
+                </div>
+            </div>
+
+            <!-- Charts Grid -->
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+                <!-- Traffic Over Time -->
+                <div class="lg:col-span-6 bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col">
+                    <div class="flex items-center justify-between mb-3">
+                        <h2 class="text-sm font-semibold text-white">Traffic Over Time</h2>
+                        <span class="text-[11px] font-mono text-slate-400">Packets &amp; Bytes / Interval</span>
+                    </div>
+                    <div class="relative h-64 w-full">
+                        <canvas id="chart-timeline"></canvas>
+                    </div>
+                </div>
+
+                <!-- Protocol Distribution -->
+                <div class="lg:col-span-3 bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col">
+                    <div class="flex items-center justify-between mb-3">
+                        <h2 class="text-sm font-semibold text-white">Protocol Distribution</h2>
+                        <span class="text-[11px] font-mono text-slate-400">By Packet Count</span>
+                    </div>
+                    <div class="relative h-64 w-full">
+                        <canvas id="chart-protocols"></canvas>
+                    </div>
+                </div>
+
+                <!-- Top Talkers -->
+                <div class="lg:col-span-3 bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col">
+                    <div class="flex items-center justify-between mb-3">
+                        <h2 class="text-sm font-semibold text-white">Top Talkers</h2>
+                        <span class="text-[11px] font-mono text-slate-400">By Bytes Sent</span>
+                    </div>
+                    <div class="relative h-64 w-full">
+                        <canvas id="chart-talkers"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Flow Health Summary Table -->
+            <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+                <div class="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
+                    <h2 class="text-sm font-semibold text-white">Detected TCP Sessions &amp; Drop Attribution Summary</h2>
+                    <span class="text-xs text-slate-400">Click any session to inspect its sequence ladder</span>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse text-xs font-mono">
+                        <thead class="bg-slate-950/80 text-slate-400 border-b border-slate-800">
+                            <tr>
+                                <th class="py-2.5 px-4">Flow</th>
+                                <th class="py-2.5 px-4">Client (Initiator)</th>
+                                <th class="py-2.5 px-4">Server (Responder)</th>
+                                <th class="py-2.5 px-4">Packets</th>
+                                <th class="py-2.5 px-4">Client Drops</th>
+                                <th class="py-2.5 px-4">Server Drops</th>
+                                <th class="py-2.5 px-4">Health Diagnosis</th>
+                            </tr>
+                        </thead>
+                        <tbody id="overview-flows-tbody" class="divide-y divide-slate-800/70"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===================================================================== -->
+        <!-- TAB 2: SEQUENCE & DROP ANALYSIS (FLAGSHIP VIEW)                       -->
+        <!-- ===================================================================== -->
+        <section id="panel-sequence" class="tab-panel hidden flex flex-col gap-5">
+            <!-- Top Flow Selector & Filter Bar -->
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-3.5 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                <div class="flex flex-wrap items-center gap-2.5 flex-1">
+                    <label for="seq-flow-select" class="text-xs font-semibold uppercase tracking-wider text-slate-400">TCP Flow:</label>
+                    <select id="seq-flow-select"
+                        class="flex-1 min-w-[260px] max-w-2xl bg-slate-950 border border-slate-700 focus:border-sky-500 rounded-lg px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none">
+                    </select>
+                </div>
+
+                <!-- Mode Toggle: Show All vs Anomalies & Drops Only -->
+                <div class="inline-flex rounded-lg bg-slate-950 p-1 border border-slate-800 self-start lg:self-auto">
+                    <button id="btn-seq-filter-all" type="button"
+                        class="px-3 py-1.5 rounded-md text-xs font-medium bg-sky-600 text-white transition cursor-pointer">
+                        Show All Packets
+                    </button>
+                    <button id="btn-seq-filter-anomalies" type="button"
+                        class="px-3 py-1.5 rounded-md text-xs font-medium text-slate-400 hover:text-white transition cursor-pointer">
+                        Anomalies &amp; Drops Only
+                    </button>
+                </div>
+            </div>
+
+            <!-- Drop Attribution Diagnostic Card (Client vs. Server Side-by-Side) -->
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm flex flex-col gap-4">
+                <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2.5">
+                    <div class="flex items-center gap-2">
+                        <span class="w-2.5 h-2.5 rounded-full bg-sky-400"></span>
+                        <h2 class="text-sm font-semibold text-white">Drop Attribution &amp; Recovery Diagnostics</h2>
+                    </div>
+                    <span id="diag-flow-endpoints" class="text-xs font-mono text-slate-400">Select a flow</span>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+                    <!-- Client -> Server (Uplink) -->
+                    <div class="lg:col-span-4 bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 flex flex-col justify-between">
+                        <div>
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="text-xs font-semibold text-sky-400 font-mono">CLIENT &rarr; SERVER (UPLINK)</span>
+                                <span id="diag-c2s-badge" class="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">HEALTHY</span>
+                            </div>
+                            <div class="grid grid-cols-3 gap-2 text-xs font-mono mt-2">
+                                <div class="bg-slate-900/90 p-2 rounded-lg border border-slate-800/80">
+                                    <div class="text-[10px] text-slate-400">Sent Pkts</div>
+                                    <div id="diag-c2s-sent" class="text-sm font-bold text-white mt-0.5">0</div>
+                                </div>
+                                <div class="bg-slate-900/90 p-2 rounded-lg border border-slate-800/80">
+                                    <div class="text-[10px] text-slate-400">Drops</div>
+                                    <div id="diag-c2s-drops" class="text-sm font-bold text-rose-400 mt-0.5">0</div>
+                                </div>
+                                <div class="bg-slate-900/90 p-2 rounded-lg border border-slate-800/80">
+                                    <div class="text-[10px] text-slate-400">Lost Bytes</div>
+                                    <div id="diag-c2s-lost-bytes" class="text-sm font-bold text-rose-300 mt-0.5">0 B</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="diag-c2s-detail" class="text-[11px] font-mono text-slate-400 mt-2.5 pt-2 border-t border-slate-800/80">
+                            Dup ACKs sent by Client: 0 • Fast Retransmits: 0 • Zero Win: 0
+                        </div>
+                    </div>
+
+                    <!-- Server -> Client (Downlink) -->
+                    <div class="lg:col-span-4 bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 flex flex-col justify-between">
+                        <div>
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="text-xs font-semibold text-emerald-400 font-mono">SERVER &rarr; CLIENT (DOWNLINK)</span>
+                                <span id="diag-s2c-badge" class="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">HEALTHY</span>
+                            </div>
+                            <div class="grid grid-cols-3 gap-2 text-xs font-mono mt-2">
+                                <div class="bg-slate-900/90 p-2 rounded-lg border border-slate-800/80">
+                                    <div class="text-[10px] text-slate-400">Sent Pkts</div>
+                                    <div id="diag-s2c-sent" class="text-sm font-bold text-white mt-0.5">0</div>
+                                </div>
+                                <div class="bg-slate-900/90 p-2 rounded-lg border border-slate-800/80">
+                                    <div class="text-[10px] text-slate-400">Drops</div>
+                                    <div id="diag-s2c-drops" class="text-sm font-bold text-rose-400 mt-0.5">0</div>
+                                </div>
+                                <div class="bg-slate-900/90 p-2 rounded-lg border border-slate-800/80">
+                                    <div class="text-[10px] text-slate-400">Lost Bytes</div>
+                                    <div id="diag-s2c-lost-bytes" class="text-sm font-bold text-rose-300 mt-0.5">0 B</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="diag-s2c-detail" class="text-[11px] font-mono text-slate-400 mt-2.5 pt-2 border-t border-slate-800/80">
+                            Dup ACKs sent by Server: 0 • Fast Retransmits: 0 • Zero Win: 0
+                        </div>
+                    </div>
+
+                    <!-- Root-Cause Diagnosis Summary -->
+                    <div class="lg:col-span-4 bg-slate-950/90 border border-sky-500/30 rounded-xl p-3.5 flex flex-col justify-between">
+                        <div>
+                            <div class="flex items-center justify-between mb-1.5">
+                                <span class="text-xs font-semibold uppercase tracking-wider text-sky-400">Root-Cause Diagnosis</span>
+                                <span id="diag-recovery-time" class="text-[11px] font-mono text-slate-400">Recovery: —</span>
+                            </div>
+                            <p id="diag-root-cause-text" class="text-xs text-slate-200 leading-relaxed">
+                                Analyzing sequence numbers and duplicate acknowledgments...
+                            </p>
+                        </div>
+                        <div id="diag-anomaly-pills" class="flex flex-wrap gap-1.5 mt-2.5 pt-2 border-t border-slate-800/80"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Interactive SVG Network Sequence Ladder Diagram -->
+            <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg flex flex-col">
+                <!-- Legend Bar -->
+                <div class="px-4 py-2.5 bg-slate-950 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono">
+                    <span class="text-slate-400">Click any packet arrow row to open decoded headers &amp; hex dump below</span>
+                    <div class="flex flex-wrap items-center gap-3 text-slate-300">
+                        <span class="flex items-center gap-1.5"><span class="w-3 h-0.5 bg-sky-400 inline-block"></span>Client &rarr; Server</span>
+                        <span class="flex items-center gap-1.5"><span class="w-3 h-0.5 bg-emerald-400 inline-block"></span>Server &rarr; Client</span>
+                        <span class="flex items-center gap-1.5 text-amber-400"><span class="w-2.5 h-2.5 rounded-sm bg-amber-500/30 border border-amber-400 inline-block"></span>Dup ACK / Retransmit</span>
+                        <span class="flex items-center gap-1.5 text-rose-400"><span class="w-3 h-0.5 border-t-2 border-dashed border-rose-500 inline-block"></span>&#10005; Dropped in Transit</span>
+                    </div>
+                </div>
+
+                <!-- Sticky Swimlane Column Header -->
+                <div class="grid grid-cols-12 bg-slate-900/95 border-b border-slate-800 px-4 py-2.5 text-xs font-mono">
+                    <div class="col-span-3 sm:col-span-2 text-slate-400">TIME (+ms / &Delta;t)</div>
+                    <div class="col-span-4 sm:col-span-4 text-center">
+                        <span id="ladder-client-endpoint" class="px-2.5 py-1 rounded-md bg-sky-950 border border-sky-500/40 text-sky-300 font-semibold">CLIENT</span>
+                    </div>
+                    <div class="col-span-1 sm:col-span-2 text-center text-slate-500 self-center">FLOW LADDER</div>
+                    <div class="col-span-4 sm:col-span-4 text-center">
+                        <span id="ladder-server-endpoint" class="px-2.5 py-1 rounded-md bg-emerald-950 border border-emerald-500/40 text-emerald-300 font-semibold">SERVER</span>
+                    </div>
+                </div>
+
+                <!-- Ladder Event Rows -->
+                <div id="sequence-ladder-body" class="max-h-[520px] overflow-y-auto divide-y divide-slate-800/50 bg-slate-950/50"></div>
+            </div>
+        </section>
+
+        <!-- ===================================================================== -->
+        <!-- TAB 3: PACKET LIST & PROTOCOL FILTERING                               -->
+        <!-- ===================================================================== -->
+        <section id="panel-packets" class="tab-panel hidden flex flex-col gap-4">
+            <!-- Search & Protocol Filter Toolbar -->
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                <div class="relative flex-1 max-w-xl">
+                    <input id="pkt-search-input" type="text" placeholder="Filter by IP, port, protocol, sequence, or info text..."
+                        class="w-full bg-slate-950 border border-slate-700 focus:border-sky-500 rounded-lg pl-9 pr-8 py-2 text-xs font-mono text-slate-200 placeholder-slate-500 focus:outline-none">
+                    <svg class="w-4 h-4 text-slate-500 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                    </svg>
+                    <button id="pkt-search-clear" type="button" class="hidden absolute right-2.5 top-2 text-slate-400 hover:text-white text-sm font-bold cursor-pointer">&times;</button>
+                </div>
+
+                <!-- Protocol Filter Pills -->
+                <div id="protocol-pills-bar" class="flex flex-wrap items-center gap-1.5 text-xs font-mono">
+                    <button type="button" data-proto="ALL" class="proto-pill px-2.5 py-1 rounded-lg bg-sky-600 text-white font-semibold cursor-pointer">ALL</button>
+                    <button type="button" data-proto="TCP" class="proto-pill px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 cursor-pointer">TCP</button>
+                    <button type="button" data-proto="HTTP" class="proto-pill px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 cursor-pointer">HTTP</button>
+                    <button type="button" data-proto="UDP" class="proto-pill px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 cursor-pointer">UDP</button>
+                    <button type="button" data-proto="DNS" class="proto-pill px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 cursor-pointer">DNS</button>
+                    <button type="button" data-proto="ICMP" class="proto-pill px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 cursor-pointer">ICMP</button>
+                    <button type="button" data-proto="ANOMALY" class="proto-pill px-2.5 py-1 rounded-lg bg-rose-950/70 text-rose-300 border border-rose-500/40 hover:bg-rose-900/60 cursor-pointer">DROPS / ANOMALIES</button>
+                </div>
+            </div>
+
+            <!-- Packet Table -->
+            <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg">
+                <div class="px-4 py-2 bg-slate-950 border-b border-slate-800 flex items-center justify-between text-xs font-mono text-slate-400">
+                    <span id="pkt-table-count">Showing 0 packets</span>
+                    <span>Click any row to inspect protocol headers &amp; raw bytes below</span>
+                </div>
+                <div class="overflow-x-auto max-h-[420px] overflow-y-auto">
+                    <table class="w-full text-left border-collapse text-xs font-mono">
+                        <thead class="sticky top-0 z-10 bg-slate-950 text-slate-400 border-b border-slate-800">
+                            <tr>
+                                <th class="py-2 px-3 w-14">No.</th>
+                                <th class="py-2 px-3 w-24">Time (s)</th>
+                                <th class="py-2 px-3">Source</th>
+                                <th class="py-2 px-3">Destination</th>
+                                <th class="py-2 px-3 w-20">Protocol</th>
+                                <th class="py-2 px-3 w-16">Len</th>
+                                <th class="py-2 px-3">Info &amp; Flow Diagnostics</th>
+                            </tr>
+                        </thead>
+                        <tbody id="pkt-table-body" class="divide-y divide-slate-800/60"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===================================================================== -->
+        <!-- SHARED BOTTOM PACKET DETAIL TREE & HEX/ASCII INSPECTOR DRAWER         -->
+        <!-- ===================================================================== -->
+        <section id="inspector-drawer" class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg">
+            <div class="px-4 py-2.5 bg-slate-950 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2">
+                <div class="flex items-center gap-2">
+                    <svg class="w-4 h-4 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path>
+                    </svg>
+                    <h3 class="text-xs font-semibold uppercase tracking-wider text-white">Packet Inspector</h3>
+                    <span id="inspector-selected-badge" class="px-2 py-0.5 rounded bg-sky-500/15 text-sky-300 border border-sky-500/30 text-[11px] font-mono">No packet selected</span>
+                </div>
+                <span id="inspector-byte-len" class="text-[11px] font-mono text-slate-400">0 bytes</span>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 divide-y lg:divide-y-0 lg:divide-x divide-slate-800">
+                <!-- Left: Protocol Layer Tree -->
+                <div class="lg:col-span-6 p-3.5 max-h-80 overflow-y-auto space-y-2 font-mono text-xs" id="inspector-layers-container">
+                    <div class="text-slate-500 text-center py-8">Select a packet from the Sequence Diagram or Packet List to decode headers.</div>
+                </div>
+
+                <!-- Right: Hex + ASCII Byte Viewer -->
+                <div class="lg:col-span-6 p-3.5 max-h-80 overflow-y-auto bg-slate-950/60 font-mono text-[11px] leading-relaxed" id="inspector-hex-container">
+                    <div class="text-slate-500 text-center py-8">Raw frame hex &amp; ASCII representation will appear here.</div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <script>
+        'use strict';
+
+        // ============================================================================
+        // UTILITY HELPERS (HTML ESCAPING & FORMATTING)
+        // ============================================================================
+        function escapeHtml(val) {
+            if (val === null || val === undefined) return '';
+            return String(val)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function formatBytes(bytes) {
+            if (!bytes || bytes === 0) return '0 B';
+            const units = ['B', 'KB', 'MB', 'GB'];
+            const idx = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
+            const scaled = bytes / Math.pow(1024, idx);
+            return `${idx === 0 ? scaled : scaled.toFixed(2)} ${units[idx]}`;
+        }
+
+        function formatMac(bytes, offset) {
+            const parts = [];
+            for (let i = 0; i < 6; i++) {
+                parts.push(bytes[offset + i].toString(16).padStart(2, '0'));
+            }
+            return parts.join(':');
+        }
+
+        function formatIpv4(bytes, offset) {
+            return `${bytes[offset]}.${bytes[offset + 1]}.${bytes[offset + 2]}.${bytes[offset + 3]}`;
+        }
+
+        function formatIpv6(bytes, offset) {
+            const groups = [];
+            for (let i = 0; i < 16; i += 2) {
+                const word = (bytes[offset + i] << 8) | bytes[offset + i + 1];
+                groups.push(word.toString(16));
+            }
+            return groups.join(':').replace(/(^|:)0(:0)+(:|$)/, '::');
+        }
+
+        function showStatusBanner(msg, type) {
+            const box = document.getElementById('status-banner');
+            const inner = document.getElementById('status-banner-inner');
+            const text = document.getElementById('status-banner-text');
+            box.classList.remove('hidden');
+            text.textContent = msg;
+
+            if (type === 'error') {
+                inner.className = 'rounded-xl px-4 py-2.5 text-xs font-medium flex items-center justify-between gap-3 border bg-rose-950/80 border-rose-500/50 text-rose-200';
+            } else {
+                inner.className = 'rounded-xl px-4 py-2.5 text-xs font-medium flex items-center justify-between gap-3 border bg-sky-950/80 border-sky-500/50 text-sky-200';
+            }
+        }
+
+        function hideStatusBanner() {
+            document.getElementById('status-banner').classList.add('hidden');
+        }
+
+        // ============================================================================
+        // GLOBAL APPLICATION STATE
+        // ============================================================================
+        const AppState = {
+            fileName: '',
+            globalHeader: null,
+            packets: [],
+            flows: [],
+            activeTab: 'overview',
+            selectedFlowId: null,
+            seqAnomaliesOnly: false,
+            pktSearchQuery: '',
+            pktProtocolFilter: 'ALL',
+            selectedPacketNo: null,
+            charts: {
+                timeline: null,
+                protocols: null,
+                talkers: null
+            }
+        };
+
+        // ============================================================================
+        // BINARY LIBPCAP PARSER & MULTI-LAYER DISSECTOR
+        // ============================================================================
+        class PcapParser {
+            static parse(arrayBuffer) {
+                if (!arrayBuffer || arrayBuffer.byteLength < 24) {
+                    throw new Error('Invalid PCAP file: file size is smaller than the 24-byte Libpcap global header.');
+                }
+
+                const view = new DataView(arrayBuffer);
+                const bytes = new Uint8Array(arrayBuffer);
+                const magicBE = view.getUint32(0, false);
+
+                let littleEndian = false;
+                let nanoPrecision = false;
+
+                if (magicBE === 0xa1b2c3d4) {
+                    littleEndian = false;
+                    nanoPrecision = false;
+                } else if (magicBE === 0xd4c3b2a1) {
+                    littleEndian = true;
+                    nanoPrecision = false;
+                } else if (magicBE === 0xa1b23c4d) {
+                    littleEndian = false;
+                    nanoPrecision = true;
+                } else if (magicBE === 0x4d3cb2a1) {
+                    littleEndian = true;
+                    nanoPrecision = true;
+                } else {
+                    throw new Error(`Unsupported file signature (0x${magicBE.toString(16)}). Please provide a standard Libpcap (.pcap) capture.`);
+                }
+
+                const versionMajor = view.getUint16(4, littleEndian);
+                const versionMinor = view.getUint16(6, littleEndian);
+                const snapLen = view.getUint32(16, littleEndian);
+                const network = view.getUint32(20, littleEndian);
+
+                const linkTypeNames = {
+                    1: 'Ethernet II (DLT_EN10MB)',
+                    101: 'Raw IP (DLT_RAW)',
+                    113: 'Linux Cooked SLL (DLT_LINUX_SLL)'
+                };
+
+                const globalHeader = {
+                    littleEndian,
+                    nanoPrecision,
+                    version: `${versionMajor}.${versionMinor}`,
+                    snapLen,
+                    network,
+                    networkName: linkTypeNames[network] || `LinkType ${network}`
+                };
+
+                const packets = [];
+                let offset = 24;
+                let baseTimestamp = null;
+                let packetNo = 1;
+
+                while (offset + 16 <= arrayBuffer.byteLength) {
+                    const tsSec = view.getUint32(offset, littleEndian);
+                    const tsSub = view.getUint32(offset + 4, littleEndian);
+                    const inclLen = view.getUint32(offset + 8, littleEndian);
+                    const origLen = view.getUint32(offset + 12, littleEndian);
+                    offset += 16;
+
+                    if (inclLen > 262144 || offset + inclLen > arrayBuffer.byteLength) {
+                        break; // Truncated trailing record
+                    }
+
+                    const subDivisor = nanoPrecision ? 1e9 : 1e6;
+                    const absTime = tsSec + tsSub / subDivisor;
+                    if (baseTimestamp === null) baseTimestamp = absTime;
+                    const relTime = absTime - baseTimestamp;
+
+                    const frameBytes = bytes.slice(offset, offset + inclLen);
+                    offset += inclLen;
+
+                    const dissected = this.dissectFrame(frameBytes, network, packetNo++, relTime, absTime, origLen);
+                    packets.push(dissected);
+                }
+
+                if (packets.length === 0) {
+                    throw new Error('No valid packets could be parsed from this PCAP file.');
+                }
+
+                return { globalHeader, packets };
+            }
+
+            static dissectFrame(bytes, network, no, relTime, absTime, origLen) {
+                const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+                const layers = [];
+
+                layers.push({
+                    name: `Frame ${no}: ${bytes.length} bytes on wire (${origLen} bytes captured)`,
+                    fields: {
+                        'Arrival Time (Relative)': `${relTime.toFixed(6)} s`,
+                        'Captured Length': `${bytes.length} bytes`,
+                        'Original Wire Length': `${origLen} bytes`
+                    }
+                });
+
+                let offset = 0;
+                let etherType = null;
+
+                if (network === 1) {
+                    // Ethernet II
+                    if (bytes.length < 14) {
+                        return { no, relTime, absTime, length: bytes.length, src: '—', dst: '—', protocol: 'ETH', info: 'Malformed Ethernet Frame', layers, raw: bytes, tcp: null, anomalies: [] };
+                    }
+                    const dstMac = formatMac(bytes, 0);
+                    const srcMac = formatMac(bytes, 6);
+                    etherType = view.getUint16(12, false);
+                    offset = 14;
+
+                    // Handle 802.1Q VLAN tag
+                    if (etherType === 0x8100 && bytes.length >= 18) {
+                        etherType = view.getUint16(16, false);
+                        offset = 18;
+                    }
+
+                    layers.push({
+                        name: `Ethernet II, Src: ${srcMac}, Dst: ${dstMac}`,
+                        fields: {
+                            'Destination MAC': dstMac,
+                            'Source MAC': srcMac,
+                            'EtherType': `0x${etherType.toString(16).padStart(4, '0')}`
+                        }
+                    });
+                } else if (network === 101) {
+                    // Raw IP (v4 or v6 based on first nibble)
+                    const ver = (bytes[0] >> 4) & 0x0f;
+                    etherType = ver === 6 ? 0x86dd : 0x0800;
+                } else if (network === 113 && bytes.length >= 16) {
+                    etherType = view.getUint16(14, false);
+                    offset = 16;
+                }
+
+                // ARP
+                if (etherType === 0x0806 && bytes.length >= offset + 28) {
+                    const opcode = view.getUint16(offset + 6, false);
+                    const senderMac = formatMac(bytes, offset + 8);
+                    const senderIp = formatIpv4(bytes, offset + 14);
+                    const targetIp = formatIpv4(bytes, offset + 24);
+                    const opStr = opcode === 1 ? 'Request' : (opcode === 2 ? 'Reply' : `Op ${opcode}`);
+
+                    layers.push({
+                        name: `Address Resolution Protocol (${opStr})`,
+                        fields: {
+                            'Operation': `${opStr} (${opcode})`,
+                            'Sender MAC': senderMac,
+                            'Sender IP': senderIp,
+                            'Target IP': targetIp
+                        }
+                    });
+
+                    const info = opcode === 1
+                        ? `Who has ${targetIp}? Tell ${senderIp}`
+                        : `${senderIp} is at ${senderMac}`;
+
+                    return { no, relTime, absTime, length: bytes.length, src: senderIp, dst: targetIp, protocol: 'ARP', info, layers, raw: bytes, tcp: null, anomalies: [] };
+                }
+
+                // IPv4 or IPv6
+                let srcIp = '—';
+                let dstIp = '—';
+                let ipProto = null;
+                let ipPayloadEnd = bytes.length;
+
+                if (etherType === 0x0800 && bytes.length >= offset + 20) {
+                    const ihl = (bytes[offset] & 0x0f) * 4;
+                    const totalLen = view.getUint16(offset + 2, false);
+                    const ttl = bytes[offset + 8];
+                    ipProto = bytes[offset + 9];
+                    srcIp = formatIpv4(bytes, offset + 12);
+                    dstIp = formatIpv4(bytes, offset + 16);
+                    ipPayloadEnd = Math.min(bytes.length, offset + totalLen);
+
+                    layers.push({
+                        name: `Internet Protocol Version 4, Src: ${srcIp}, Dst: ${dstIp}`,
+                        fields: {
+                            'Header Length': `${ihl} bytes`,
+                            'Total Length': `${totalLen} bytes`,
+                            'Time to Live (TTL)': ttl,
+                            'Protocol ID': ipProto,
+                            'Source Address': srcIp,
+                            'Destination Address': dstIp
+                        }
+                    });
+
+                    offset += ihl;
+                } else if (etherType === 0x86dd && bytes.length >= offset + 40) {
+                    const payloadLen = view.getUint16(offset + 4, false);
+                    ipProto = bytes[offset + 6];
+                    const hopLimit = bytes[offset + 7];
+                    srcIp = formatIpv6(bytes, offset + 8);
+                    dstIp = formatIpv6(bytes, offset + 24);
+                    ipPayloadEnd = Math.min(bytes.length, offset + 40 + payloadLen);
+
+                    layers.push({
+                        name: `Internet Protocol Version 6, Src: ${srcIp}, Dst: ${dstIp}`,
+                        fields: {
+                            'Payload Length': `${payloadLen} bytes`,
+                            'Next Header': ipProto,
+                            'Hop Limit': hopLimit,
+                            'Source Address': srcIp,
+                            'Destination Address': dstIp
+                        }
+                    });
+
+                    offset += 40;
+                } else {
+                    return { no, relTime, absTime, length: bytes.length, src: srcIp, dst: dstIp, protocol: 'OTHER', info: `EtherType 0x${(etherType || 0).toString(16)}`, layers, raw: bytes, tcp: null, anomalies: [] };
+                }
+
+                // Transport Layer Dissection
+                if (ipProto === 1 && bytes.length >= offset + 4) {
+                    // ICMP
+                    const icmpType = bytes[offset];
+                    const icmpCode = bytes[offset + 1];
+                    const typeLabel = icmpType === 8 ? 'Echo (ping) request' : (icmpType === 0 ? 'Echo (ping) reply' : `Type ${icmpType}`);
+                    layers.push({
+                        name: `Internet Control Message Protocol (${typeLabel})`,
+                        fields: {
+                            'Type': `${icmpType} (${typeLabel})`,
+                            'Code': icmpCode
+                        }
+                    });
+                    return { no, relTime, absTime, length: bytes.length, src: srcIp, dst: dstIp, protocol: 'ICMP', info: typeLabel, layers, raw: bytes, tcp: null, anomalies: [] };
+                }
+
+                if (ipProto === 6 && bytes.length >= offset + 20) {
+                    // TCP
+                    const srcPort = view.getUint16(offset, false);
+                    const dstPort = view.getUint16(offset + 2, false);
+                    const seq = view.getUint32(offset + 4, false);
+                    const ack = view.getUint32(offset + 8, false);
+                    const dataOffset = ((bytes[offset + 12] >> 4) & 0x0f) * 4;
+                    const flags = bytes[offset + 13];
+                    const windowSize = view.getUint16(offset + 14, false);
+                    const checksum = view.getUint16(offset + 16, false);
+
+                    const flagNames = [];
+                    if (flags & 0x02) flagNames.push('SYN');
+                    if (flags & 0x10) flagNames.push('ACK');
+                    if (flags & 0x08) flagNames.push('PSH');
+                    if (flags & 0x01) flagNames.push('FIN');
+                    if (flags & 0x04) flagNames.push('RST');
+                    if (flags & 0x20) flagNames.push('URG');
+
+                    const payloadStart = offset + dataOffset;
+                    const payloadLen = Math.max(0, ipPayloadEnd - payloadStart);
+
+                    layers.push({
+                        name: `Transmission Control Protocol, Src Port: ${srcPort}, Dst Port: ${dstPort}, Len: ${payloadLen}`,
+                        fields: {
+                            'Source Port': srcPort,
+                            'Destination Port': dstPort,
+                            'Sequence Number (raw)': seq,
+                            'Acknowledgment Number (raw)': ack,
+                            'Header Length': `${dataOffset} bytes`,
+                            'Flags': `0x${flags.toString(16).padStart(2, '0')} [${flagNames.join(', ')}]`,
+                            'Window Size': windowSize,
+                            'Checksum': `0x${checksum.toString(16).padStart(4, '0')}`,
+                            'TCP Payload Length': `${payloadLen} bytes`
+                        }
+                    });
+
+                    let protocol = 'TCP';
+                    let info = `${srcPort} -> ${dstPort} [${flagNames.join(', ')}] Seq=${seq} Ack=${ack} Win=${windowSize} Len=${payloadLen}`;
+
+                    // Detect HTTP Payload
+                    if (payloadLen > 0 && payloadStart < bytes.length) {
+                        const snippet = this.decodeAscii(bytes.subarray(payloadStart, Math.min(bytes.length, payloadStart + payloadLen)), 180);
+                        const httpLine = snippet.match(/^(GET|POST|PUT|DELETE|HEAD|OPTIONS|PATCH|HTTP\/1\.[01])\s+[^\r\n]+/);
+                        if (httpLine) {
+                            protocol = 'HTTP';
+                            info = `${httpLine[0]} (Seq=${seq}, Len=${payloadLen})`;
+                            layers.push({
+                                name: 'Hypertext Transfer Protocol',
+                                fields: {
+                                    'Request / Status Line': httpLine[0],
+                                    'Payload Preview': snippet.replace(/\r\n/g, ' \\r\\n ')
+                                }
+                            });
+                        } else if (srcPort === 443 || dstPort === 443) {
+                            info = `${srcPort} -> ${dstPort} [${flagNames.join(', ')}] TLS Application Data Seq=${seq} Ack=${ack} Len=${payloadLen}`;
+                        }
+                    }
+
+                    const tcpMeta = {
+                        srcIp,
+                        dstIp,
+                        srcPort,
+                        dstPort,
+                        seq,
+                        ack,
+                        flags,
+                        flagNames,
+                        windowSize,
+                        payloadLen
+                    };
+
+                    return { no, relTime, absTime, length: bytes.length, src: srcIp, dst: dstIp, protocol, info, layers, raw: bytes, tcp: tcpMeta, anomalies: [] };
+                }
+
+                if (ipProto === 17 && bytes.length >= offset + 8) {
+                    // UDP
+                    const srcPort = view.getUint16(offset, false);
+                    const dstPort = view.getUint16(offset + 2, false);
+                    const udpLen = view.getUint16(offset + 4, false);
+                    const payloadStart = offset + 8;
+                    const payloadLen = Math.max(0, ipPayloadEnd - payloadStart);
+
+                    layers.push({
+                        name: `User Datagram Protocol, Src Port: ${srcPort}, Dst Port: ${dstPort}`,
+                        fields: {
+                            'Source Port': srcPort,
+                            'Destination Port': dstPort,
+                            'Length': `${udpLen} bytes`
+                        }
+                    });
+
+                    let protocol = 'UDP';
+                    let info = `${srcPort} -> ${dstPort} Len=${payloadLen}`;
+
+                    if ((srcPort === 53 || dstPort === 53) && payloadLen >= 12) {
+                        const dns = this.parseDns(bytes, payloadStart);
+                        if (dns) {
+                            protocol = 'DNS';
+                            info = dns.summary;
+                            layers.push({
+                                name: `Domain Name System (${dns.isResponse ? 'response' : 'query'})`,
+                                fields: dns.fields
+                            });
+                        }
+                    }
+
+                    return { no, relTime, absTime, length: bytes.length, src: srcIp, dst: dstIp, protocol, info, layers, raw: bytes, tcp: null, anomalies: [] };
+                }
+
+                return { no, relTime, absTime, length: bytes.length, src: srcIp, dst: dstIp, protocol: `IP-${ipProto}`, info: `IP Protocol ${ipProto}`, layers, raw: bytes, tcp: null, anomalies: [] };
+            }
+
+            static decodeAscii(uint8Arr, maxLen) {
+                const limit = Math.min(uint8Arr.length, maxLen);
+                let out = '';
+                for (let i = 0; i < limit; i++) {
+                    const c = uint8Arr[i];
+                    out += (c >= 32 && c <= 126) || c === 10 || c === 13 ? String.fromCharCode(c) : '.';
+                }
+                return out;
+            }
+
+            static parseDns(bytes, start) {
+                try {
+                    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+                    const txId = view.getUint16(start, false);
+                    const flags = view.getUint16(start + 2, false);
+                    const isResponse = (flags & 0x8000) !== 0;
+                    const qdCount = view.getUint16(start + 4, false);
+                    const anCount = view.getUint16(start + 6, false);
+
+                    let pos = start + 12;
+                    const labels = [];
+                    let safety = 0;
+                    while (pos < bytes.length && bytes[pos] !== 0 && safety++ < 32) {
+                        const len = bytes[pos];
+                        if ((len & 0xc0) === 0xc0) {
+                            pos += 2;
+                            break;
+                        }
+                        pos++;
+                        if (pos + len > bytes.length) break;
+                        let part = '';
+                        for (let i = 0; i < len; i++) part += String.fromCharCode(bytes[pos + i]);
+                        labels.push(part);
+                        pos += len;
+                    }
+                    const qname = labels.join('.') || 'root';
+                    return {
+                        isResponse,
+                        summary: `Standard ${isResponse ? 'response' : 'query'} 0x${txId.toString(16)} A ${qname}`,
+                        fields: {
+                            'Transaction ID': `0x${txId.toString(16).padStart(4, '0')}`,
+                            'Type': isResponse ? 'Response' : 'Query',
+                            'Questions': qdCount,
+                            'Answer RRs': anCount,
+                            'Query Name': qname
+                        }
+                    };
+                } catch (_) {
+                    return null;
+                }
+            }
+        }
+
+        // ============================================================================
+        // STATEFUL TCP FLOW & CLIENT-VS-SERVER PACKET DROP ANALYZER
+        // ============================================================================
+        class TcpFlowAnalyzer {
+            static analyze(packets) {
+                const flowBuckets = new Map();
+
+                for (const pkt of packets) {
+                    pkt.anomalies = [];
+                    pkt.flowId = null;
+                    pkt.direction = null;
+                    if (!pkt.tcp) continue;
+
+                    const ep1 = `${pkt.tcp.srcIp}:${pkt.tcp.srcPort}`;
+                    const ep2 = `${pkt.tcp.dstIp}:${pkt.tcp.dstPort}`;
+                    const key = ep1 < ep2 ? `${ep1}|${ep2}` : `${ep2}|${ep1}`;
+
+                    if (!flowBuckets.has(key)) {
+                        flowBuckets.set(key, []);
+                    }
+                    flowBuckets.get(key).push(pkt);
+                }
+
+                const flows = [];
+                let flowIdCounter = 1;
+
+                for (const [key, pkts] of flowBuckets.entries()) {
+                    if (pkts.length === 0) continue;
+
+                    // Identify Client (SYN sender) vs Server (SYN-ACK sender)
+                    let clientEp = null;
+                    let serverEp = null;
+
+                    for (const p of pkts) {
+                        const isSyn = (p.tcp.flags & 0x02) !== 0;
+                        const isAck = (p.tcp.flags & 0x10) !== 0;
+                        if (isSyn && !isAck) {
+                            clientEp = `${p.tcp.srcIp}:${p.tcp.srcPort}`;
+                            serverEp = `${p.tcp.dstIp}:${p.tcp.dstPort}`;
+                            break;
+                        } else if (isSyn && isAck) {
+                            serverEp = `${p.tcp.srcIp}:${p.tcp.srcPort}`;
+                            clientEp = `${p.tcp.dstIp}:${p.tcp.dstPort}`;
+                            break;
+                        }
+                    }
+
+                    if (!clientEp) {
+                        const first = pkts[0].tcp;
+                        if (first.srcPort < 1024 && first.dstPort >= 1024) {
+                            serverEp = `${first.srcIp}:${first.srcPort}`;
+                            clientEp = `${first.dstIp}:${first.dstPort}`;
+                        } else {
+                            clientEp = `${first.srcIp}:${first.srcPort}`;
+                            serverEp = `${first.dstIp}:${first.dstPort}`;
+                        }
+                    }
+
+                    const dirState = {
+                        C2S: {
+                            initSeq: null,
+                            highestNextSeq: null,
+                            lastAck: null,
+                            dupAckStreak: 0,
+                            sentSegments: [],
+                            packets: 0,
+                            bytes: 0
+                        },
+                        S2C: {
+                            initSeq: null,
+                            highestNextSeq: null,
+                            lastAck: null,
+                            dupAckStreak: 0,
+                            sentSegments: [],
+                            packets: 0,
+                            bytes: 0
+                        }
+                    };
+
+                    const stats = {
+                        c2sPackets: 0,
+                        s2cPackets: 0,
+                        clientDrops: 0,
+                        clientLostBytes: 0,
+                        serverDrops: 0,
+                        serverLostBytes: 0,
+                        clientDupAcksSent: 0,
+                        serverDupAcksSent: 0,
+                        clientFastRetrans: 0,
+                        serverFastRetrans: 0,
+                        clientZeroWin: 0,
+                        serverZeroWin: 0,
+                        resets: 0,
+                        recoveryDeltasMs: []
+                    };
+
+                    const events = [];
+                    let prevTime = pkts[0].relTime;
+
+                    for (const pkt of pkts) {
+                        const t = pkt.tcp;
+                        const sender = `${t.srcIp}:${t.srcPort}`;
+                        const dir = sender === clientEp ? 'C2S' : 'S2C';
+                        const peerDir = dir === 'C2S' ? 'S2C' : 'C2S';
+                        const s = dirState[dir];
+                        const peer = dirState[peerDir];
+
+                        pkt.flowId = flowIdCounter;
+                        pkt.direction = dir;
+                        s.packets++;
+                        s.bytes += t.payloadLen;
+                        if (dir === 'C2S') stats.c2sPackets++;
+                        else stats.s2cPackets++;
+
+                        const isSyn = (t.flags & 0x02) !== 0;
+                        const isFin = (t.flags & 0x01) !== 0;
+                        const isRst = (t.flags & 0x04) !== 0;
+                        const isAck = (t.flags & 0x10) !== 0;
+
+                        const seqLen = t.payloadLen + (isSyn ? 1 : 0) + (isFin ? 1 : 0);
+                        const segStart = t.seq;
+                        const segEnd = t.seq + seqLen;
+
+                        if (s.initSeq === null) s.initSeq = t.seq;
+                        const relSeq = t.seq - s.initSeq;
+                        const relAck = (isAck && peer.initSeq !== null) ? (t.ack - peer.initSeq) : t.ack;
+                        const deltaMs = (pkt.relTime - prevTime) * 1000;
+                        prevTime = pkt.relTime;
+
+                        const tags = [];
+                        let isRetransmit = false;
+
+                        // 1. RST Detection
+                        if (isRst) {
+                            stats.resets++;
+                            const actor = dir === 'C2S' ? 'Client' : 'Server';
+                            tags.push({
+                                type: 'RST',
+                                severity: 'danger',
+                                label: `${actor.toUpperCase()} RST`,
+                                detail: `${actor} sent TCP RST, abruptly aborting the connection.`
+                            });
+                        }
+
+                        // 2. Zero Window Detection
+                        if (t.windowSize === 0 && !isRst && !isFin) {
+                            if (dir === 'C2S') stats.clientZeroWin++;
+                            else stats.serverZeroWin++;
+                            const actor = dir === 'C2S' ? 'Client' : 'Server';
+                            tags.push({
+                                type: 'ZERO_WIN',
+                                severity: 'warning',
+                                label: `${actor.toUpperCase()} ZERO WINDOW`,
+                                detail: `${actor} receive buffer full (Win=0).`
+                            });
+                        }
+
+                        // 3. Duplicate ACK Detection
+                        if (isAck && seqLen === 0 && !isRst) {
+                            if (s.lastAck !== null && t.ack === s.lastAck && peer.highestNextSeq !== null && t.ack < peer.highestNextSeq) {
+                                s.dupAckStreak++;
+                                if (dir === 'C2S') stats.clientDupAcksSent++;
+                                else stats.serverDupAcksSent++;
+
+                                const senderRole = dir === 'C2S' ? 'Client' : 'Server';
+                                const missingFrom = dir === 'C2S' ? 'Server' : 'Client';
+                                tags.push({
+                                    type: 'DUP_ACK',
+                                    severity: 'warning',
+                                    label: `Dup ACK #${s.dupAckStreak}`,
+                                    detail: `${senderRole} repeated Ack=${t.ack} (RelAck=${relAck}) signaling missing ${missingFrom} segment.`
+                                });
+                            } else {
+                                s.dupAckStreak = 0;
+                            }
+                            s.lastAck = t.ack;
+                        } else if (isAck) {
+                            s.lastAck = t.ack;
+                            s.dupAckStreak = 0;
+                        }
+
+                        // 4. Sequence Gap (Dropped Segment) & Retransmission Detection
+                        if (seqLen > 0 && !isRst) {
+                            if (s.highestNextSeq === null) {
+                                s.highestNextSeq = segEnd;
+                            } else if (segStart > s.highestNextSeq) {
+                                // Sequence jump: an earlier segment from this sender was dropped in transit
+                                const missingBytes = segStart - s.highestNextSeq;
+                                const missingStart = s.highestNextSeq;
+                                const missingEnd = segStart;
+                                const senderRole = dir === 'C2S' ? 'Client' : 'Server';
+                                const receiverRole = dir === 'C2S' ? 'Server' : 'Client';
+
+                                if (dir === 'C2S') {
+                                    stats.clientDrops++;
+                                    stats.clientLostBytes += missingBytes;
+                                } else {
+                                    stats.serverDrops++;
+                                    stats.serverLostBytes += missingBytes;
+                                }
+
+                                // Insert explicit synthetic DROP_MARKER event right before out-of-order segment
+                                events.push({
+                                    kind: 'DROP_MARKER',
+                                    direction: dir,
+                                    relTime: pkt.relTime,
+                                    missingStart,
+                                    missingEnd,
+                                    missingRelStart: missingStart - s.initSeq,
+                                    missingRelEnd: missingEnd - s.initSeq,
+                                    missingBytes,
+                                    label: `DROPPED IN TRANSIT (missing seq ${missingStart}..${missingEnd}, ${missingBytes} bytes)`,
+                                    detail: `Packet dropped on ${senderRole} -> ${receiverRole} path. Expected Seq=${missingStart} (RelSeq=${missingStart - s.initSeq}), received Seq=${segStart}.`
+                                });
+
+                                tags.push({
+                                    type: 'OUT_OF_ORDER',
+                                    severity: 'danger',
+                                    label: `Out-of-Order (+${missingBytes}B gap)`,
+                                    detail: `Arrived after ${missingBytes}-byte drop on ${senderRole} -> ${receiverRole} path.`
+                                });
+
+                                s.highestNextSeq = segEnd;
+                            } else if (segStart < s.highestNextSeq) {
+                                // Retransmission of previously dropped/unACKed segment
+                                isRetransmit = true;
+                                const senderRole = dir === 'C2S' ? 'Client' : 'Server';
+                                const isFast = peer.dupAckStreak >= 3;
+                                const prior = s.sentSegments.find(seg => seg.start === segStart);
+                                const recoveryMs = prior ? (pkt.relTime - prior.time) * 1000 : deltaMs;
+
+                                if (isFast) {
+                                    if (dir === 'C2S') stats.clientFastRetrans++;
+                                    else stats.serverFastRetrans++;
+                                }
+
+                                // If drop wasn't already recorded via sequence gap (e.g. tail drop recovered by RTO), attribute it now
+                                if (!prior || !prior.dropCounted) {
+                                    if (dir === 'C2S') {
+                                        stats.clientDrops++;
+                                        stats.clientLostBytes += t.payloadLen || seqLen;
+                                    } else {
+                                        stats.serverDrops++;
+                                        stats.serverLostBytes += t.payloadLen || seqLen;
+                                    }
+                                    if (prior) prior.dropCounted = true;
+                                }
+
+                                if (recoveryMs > 0) stats.recoveryDeltasMs.push(recoveryMs);
+
+                                tags.push({
+                                    type: 'RETRANSMIT',
+                                    severity: 'danger',
+                                    label: isFast ? 'Fast Retransmit' : 'TCP Retransmission',
+                                    detail: `${senderRole} retransmitted Seq=${segStart} (RelSeq=${relSeq}, Len=${t.payloadLen}) ${isFast ? 'after 3 Duplicate ACKs' : 'after RTO timeout'} (+${recoveryMs.toFixed(1)} ms).`
+                                });
+
+                                peer.dupAckStreak = 0;
+                            } else {
+                                s.highestNextSeq = segEnd;
+                            }
+
+                            s.sentSegments.push({
+                                start: segStart,
+                                end: segEnd,
+                                time: pkt.relTime,
+                                dropCounted: segStart > (s.highestNextSeq - seqLen)
+                            });
+                        }
+
+                        pkt.anomalies = tags;
+
+                        events.push({
+                            kind: 'PACKET',
+                            pkt,
+                            direction: dir,
+                            relTime: pkt.relTime,
+                            deltaMs,
+                            relSeq,
+                            relAck,
+                            flagsStr: t.flagNames.join(', ') || 'NONE',
+                            payloadLen: t.payloadLen,
+                            windowSize: t.windowSize,
+                            tags,
+                            isRetransmit
+                        });
+                    }
+
+                    const totalDrops = stats.clientDrops + stats.serverDrops;
+                    const avgRecoveryMs = stats.recoveryDeltasMs.length
+                        ? stats.recoveryDeltasMs.reduce((a, b) => a + b, 0) / stats.recoveryDeltasMs.length
+                        : null;
+
+                    let healthStatus = 'Healthy';
+                    let healthBadgeClass = 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40';
+                    if (stats.clientDrops > 0 && stats.serverDrops > 0) {
+                        healthStatus = 'Client & Server Drops';
+                        healthBadgeClass = 'bg-rose-500/20 text-rose-300 border-rose-500/40';
+                    } else if (stats.clientDrops > 0) {
+                        healthStatus = 'Client Drop';
+                        healthBadgeClass = 'bg-rose-500/20 text-rose-300 border-rose-500/40';
+                    } else if (stats.serverDrops > 0) {
+                        healthStatus = 'Server Drop';
+                        healthBadgeClass = 'bg-amber-500/20 text-amber-300 border-amber-500/40';
+                    } else if (stats.resets > 0) {
+                        healthStatus = 'RST Aborted';
+                        healthBadgeClass = 'bg-rose-500/20 text-rose-300 border-rose-500/40';
+                    }
+
+                    flows.push({
+                        id: flowIdCounter++,
+                        key,
+                        clientEp,
+                        serverEp,
+                        packets: pkts,
+                        events,
+                        stats,
+                        totalDrops,
+                        avgRecoveryMs,
+                        healthStatus,
+                        healthBadgeClass
+                    });
+                }
+
+                return flows;
+            }
+        }
+
+        // ============================================================================
+        // BUILT-IN BINARY SAMPLE PCAP GENERATOR (3 REALISTIC FLOWS + DNS/ICMP)
+        // ============================================================================
+        class SamplePcapGenerator {
+            static strToBytes(str) {
+                const arr = new Uint8Array(str.length);
+                for (let i = 0; i < str.length; i++) arr[i] = str.charCodeAt(i) & 0xff;
+                return arr;
+            }
+
+            static buildEthIpv4(srcMac, dstMac, srcIp, dstIp, proto, l4Payload) {
+                const totalLen = 20 + l4Payload.length;
+                const frame = new Uint8Array(14 + totalLen);
+                const view = new DataView(frame.buffer);
+
+                frame.set(dstMac, 0);
+                frame.set(srcMac, 6);
+                view.setUint16(12, 0x0800, false);
+
+                frame[14] = 0x45;
+                frame[15] = 0x00;
+                view.setUint16(16, totalLen, false);
+                view.setUint16(18, 0x1c46, false);
+                view.setUint16(20, 0x4000, false);
+                frame[22] = 64;
+                frame[23] = proto;
+                view.setUint16(24, 0, false);
+                frame.set(srcIp, 26);
+                frame.set(dstIp, 30);
+
+                // IPv4 Header Checksum
+                let sum = 0;
+                for (let i = 14; i < 34; i += 2) sum += view.getUint16(i, false);
+                while (sum > 0xffff) sum = (sum & 0xffff) + (sum >> 16);
+                view.setUint16(24, (~sum) & 0xffff, false);
+
+                frame.set(l4Payload, 34);
+                return frame;
+            }
+
+            static buildTcp(srcMac, dstMac, srcIp, dstIp, srcPort, dstPort, seq, ack, flags, payload, win = 65535) {
+                const tcpLen = 20 + payload.length;
+                const tcp = new Uint8Array(tcpLen);
+                const view = new DataView(tcp.buffer);
+
+                view.setUint16(0, srcPort, false);
+                view.setUint16(2, dstPort, false);
+                view.setUint32(4, seq >>> 0, false);
+                view.setUint32(8, ack >>> 0, false);
+                tcp[12] = 0x50;
+                tcp[13] = flags;
+                view.setUint16(14, win, false);
+                view.setUint16(16, 0xabcd, false);
+                view.setUint16(18, 0, false);
+                tcp.set(payload, 20);
+
+                return this.buildEthIpv4(srcMac, dstMac, srcIp, dstIp, 6, tcp);
+            }
+
+            static buildUdp(srcMac, dstMac, srcIp, dstIp, srcPort, dstPort, payload) {
+                const udpLen = 8 + payload.length;
+                const udp = new Uint8Array(udpLen);
+                const view = new DataView(udp.buffer);
+                view.setUint16(0, srcPort, false);
+                view.setUint16(2, dstPort, false);
+                view.setUint16(4, udpLen, false);
+                view.setUint16(6, 0x1234, false);
+                udp.set(payload, 8);
+                return this.buildEthIpv4(srcMac, dstMac, srcIp, dstIp, 17, udp);
+            }
+
+            static buildDns(srcMac, dstMac, srcIp, dstIp, srcPort, dstPort, txId, isResp, domain) {
+                const parts = domain.split('.');
+                const qnameBytes = [];
+                for (const p of parts) {
+                    qnameBytes.push(p.length);
+                    for (let i = 0; i < p.length; i++) qnameBytes.push(p.charCodeAt(i));
+                }
+                qnameBytes.push(0);
+
+                const dns = new Uint8Array(12 + qnameBytes.length + 4);
+                const view = new DataView(dns.buffer);
+                view.setUint16(0, txId, false);
+                view.setUint16(2, isResp ? 0x8180 : 0x0100, false);
+                view.setUint16(4, 1, false);
+                view.setUint16(6, isResp ? 1 : 0, false);
+                dns.set(qnameBytes, 12);
+                const qend = 12 + qnameBytes.length;
+                view.setUint16(qend, 1, false);
+                view.setUint16(qend + 2, 1, false);
+
+                return this.buildUdp(srcMac, dstMac, srcIp, dstIp, srcPort, dstPort, dns);
+            }
+
+            static buildIcmp(srcMac, dstMac, srcIp, dstIp, isReply, seqNum) {
+                const icmp = new Uint8Array(16);
+                const view = new DataView(icmp.buffer);
+                icmp[0] = isReply ? 0 : 8;
+                icmp[1] = 0;
+                view.setUint16(4, 0x0042, false);
+                view.setUint16(6, seqNum, false);
+                return this.buildEthIpv4(srcMac, dstMac, srcIp, dstIp, 1, icmp);
+            }
+
+            static generate() {
+                const clientMac = new Uint8Array([0x02, 0x42, 0xac, 0x11, 0x00, 0x15]);
+                const gwMac = new Uint8Array([0x00, 0x1a, 0x2b, 0x3c, 0x4d, 0x50]);
+
+                const clientIp = new Uint8Array([10, 0, 1, 15]);
+                const srv1Ip = new Uint8Array([192, 168, 10, 50]);
+                const srv3Ip = new Uint8Array([192, 168, 10, 88]);
+                const dnsIp = new Uint8Array([8, 8, 8, 8]);
+
+                const records = [];
+                let curSec = 1732320000;
+                let curUsec = 100000;
+
+                const pushFrame = (deltaMs, frameBytes) => {
+                    curUsec += Math.round(deltaMs * 1000);
+                    while (curUsec >= 1000000) {
+                        curSec += 1;
+                        curUsec -= 1000000;
+                    }
+                    records.push({ sec: curSec, usec: curUsec, frame: frameBytes });
+                };
+
+                // Background DNS & ICMP
+                pushFrame(0, this.buildDns(clientMac, gwMac, clientIp, dnsIp, 53110, 53, 0x4a10, false, 'upload.service.internal'));
+                pushFrame(12.4, this.buildDns(gwMac, clientMac, dnsIp, clientIp, 53, 53110, 0x4a10, true, 'upload.service.internal'));
+                pushFrame(8.0, this.buildIcmp(clientMac, gwMac, clientIp, srv1Ip, false, 1));
+                pushFrame(6.2, this.buildIcmp(gwMac, clientMac, srv1Ip, clientIp, true, 1));
+
+                // =========================================================================
+                // FLOW 1: HTTP Upload with CLIENT-TO-SERVER Packet Drop (10.0.1.15:52410 -> 192.168.10.50:80)
+                // =========================================================================
+                const cPort1 = 52410;
+                const sPort1 = 80;
+                // 3-way handshake
+                pushFrame(15.0, this.buildTcp(clientMac, gwMac, clientIp, srv1Ip, cPort1, sPort1, 10000, 0, 0x02, new Uint8Array(0))); // SYN
+                pushFrame(14.2, this.buildTcp(gwMac, clientMac, srv1Ip, clientIp, sPort1, cPort1, 50000, 10001, 0x12, new Uint8Array(0))); // SYN-ACK
+                pushFrame(1.1, this.buildTcp(clientMac, gwMac, clientIp, srv1Ip, cPort1, sPort1, 10001, 50001, 0x10, new Uint8Array(0))); // ACK
+
+                // HTTP POST Header (120 bytes) -> Seq 10001..10121
+                const postHdr = this.strToBytes('POST /api/v1/upload HTTP/1.1\r\nHost: upload.service.internal\r\nContent-Type: application/octet-stream\r\nContent-Length: 1024\r\n\r\n');
+                pushFrame(4.5, this.buildTcp(clientMac, gwMac, clientIp, srv1Ip, cPort1, sPort1, 10001, 50001, 0x18, postHdr));
+                const seqAfterHdr = 10001 + postHdr.length; // 10121
+
+                // Server ACKs HTTP POST Header
+                pushFrame(13.8, this.buildTcp(gwMac, clientMac, srv1Ip, clientIp, sPort1, cPort1, 50001, seqAfterHdr, 0x10, new Uint8Array(0)));
+
+                // Segment #1 (256 bytes) -> Seq 10121..10377 (Arrives cleanly)
+                const seg1Data = new Uint8Array(256).fill(0x41);
+                pushFrame(3.0, this.buildTcp(clientMac, gwMac, clientIp, srv1Ip, cPort1, sPort1, seqAfterHdr, 50001, 0x10, seg1Data));
+                const seqAfterSeg1 = seqAfterHdr + 256; // 10377
+
+                // Server ACKs Segment #1
+                pushFrame(12.5, this.buildTcp(gwMac, clientMac, srv1Ip, clientIp, sPort1, cPort1, 50001, seqAfterSeg1, 0x10, new Uint8Array(0)));
+
+                // Segment #2 (512 bytes) -> Seq 10377..10889 [DROPPED IN TRANSIT ON CLIENT->SERVER UPLINK]
+                const seg2DroppedData = new Uint8Array(512).fill(0x42);
+                const seqAfterSeg2 = seqAfterSeg1 + 512; // 10889
+
+                // Segment #3 (256 bytes) -> Seq 10889..11145 (Arrives Out-of-Order at Server!)
+                const seg3Data = new Uint8Array(256).fill(0x43);
+                pushFrame(4.2, this.buildTcp(clientMac, gwMac, clientIp, srv1Ip, cPort1, sPort1, seqAfterSeg2, 50001, 0x18, seg3Data));
+
+                // Server sends 3 Duplicate ACKs (Ack = 10377)
+                pushFrame(2.1, this.buildTcp(gwMac, clientMac, srv1Ip, clientIp, sPort1, cPort1, 50001, seqAfterSeg1, 0x10, new Uint8Array(0)));
+                pushFrame(1.4, this.buildTcp(gwMac, clientMac, srv1Ip, clientIp, sPort1, cPort1, 50001, seqAfterSeg1, 0x10, new Uint8Array(0)));
+                pushFrame(1.3, this.buildTcp(gwMac, clientMac, srv1Ip, clientIp, sPort1, cPort1, 50001, seqAfterSeg1, 0x10, new Uint8Array(0)));
+
+                // Client performs Fast Retransmission of Segment #2 (512 bytes, Seq 10377)
+                pushFrame(11.6, this.buildTcp(clientMac, gwMac, clientIp, srv1Ip, cPort1, sPort1, seqAfterSeg1, 50001, 0x10, seg2DroppedData));
+
+                // Server cumulatively ACKs all 1024 payload bytes (Ack = 11145) & sends HTTP 200 OK
+                const finalCSeq1 = seqAfterSeg2 + 256; // 11145
+                const http200 = this.strToBytes('HTTP/1.1 200 OK\r\nContent-Length: 15\r\n\r\n{"status":"ok"}');
+                pushFrame(14.0, this.buildTcp(gwMac, clientMac, srv1Ip, clientIp, sPort1, cPort1, 50001, finalCSeq1, 0x18, http200));
+                pushFrame(1.8, this.buildTcp(clientMac, gwMac, clientIp, srv1Ip, cPort1, sPort1, finalCSeq1, 50001 + http200.length, 0x10, new Uint8Array(0)));
+
+                // =========================================================================
+                // FLOW 2: API Download with SERVER-TO-CLIENT Packet Drop (10.0.1.15:52414 -> 192.168.10.50:443)
+                // =========================================================================
+                const cPort2 = 52414;
+                const sPort2 = 443;
+                pushFrame(45.0, this.buildTcp(clientMac, gwMac, clientIp, srv1Ip, cPort2, sPort2, 20000, 0, 0x02, new Uint8Array(0))); // SYN
+                pushFrame(15.1, this.buildTcp(gwMac, clientMac, srv1Ip, clientIp, sPort2, cPort2, 80000, 20001, 0x12, new Uint8Array(0))); // SYN-ACK
+                pushFrame(1.2, this.buildTcp(clientMac, gwMac, clientIp, srv1Ip, cPort2, sPort2, 20001, 80001, 0x10, new Uint8Array(0))); // ACK
+
+                // Client sends encrypted API request (96 bytes)
+                const tlsReq = new Uint8Array(96).fill(0x17);
+                pushFrame(3.4, this.buildTcp(clientMac, gwMac, clientIp, srv1Ip, cPort2, sPort2, 20001, 80001, 0x18, tlsReq));
+                const cSeq2AfterReq = 20001 + 96; // 20097
+
+                // Server sends Segment #1 (512 bytes) -> Seq 80001..80513 (Arrives cleanly)
+                const srvSeg1 = new Uint8Array(512).fill(0x51);
+                pushFrame(16.2, this.buildTcp(gwMac, clientMac, srv1Ip, clientIp, sPort2, cPort2, 80001, cSeq2AfterReq, 0x10, srvSeg1));
+                const sSeqAfterSeg1 = 80001 + 512; // 80513
+
+                // Client ACKs Server Segment #1
+                pushFrame(2.0, this.buildTcp(clientMac, gwMac, clientIp, srv1Ip, cPort2, sPort2, cSeq2AfterReq, sSeqAfterSeg1, 0x10, new Uint8Array(0)));
+
+                // Server sends Segment #2 (1024 bytes) -> Seq 80513..81537 [DROPPED IN TRANSIT ON SERVER->CLIENT DOWNLINK]
+                const srvSeg2Dropped = new Uint8Array(1024).fill(0x52);
+                const sSeqAfterSeg2 = sSeqAfterSeg1 + 1024; // 81537
+
+                // Server sends Segment #3 (512 bytes) -> Seq 81537..82049 (Arrives Out-of-Order at Client!)
+                const srvSeg3 = new Uint8Array(512).fill(0x53);
+                pushFrame(3.1, this.buildTcp(gwMac, clientMac, srv1Ip, clientIp, sPort2, cPort2, sSeqAfterSeg2, cSeq2AfterReq, 0x18, srvSeg3));
+
+                // Client detects gap and fires 3 Duplicate ACKs (Ack = 80513)
+                pushFrame(1.5, this.buildTcp(clientMac, gwMac, clientIp, srv1Ip, cPort2, sPort2, cSeq2AfterReq, sSeqAfterSeg1, 0x10, new Uint8Array(0)));
+                pushFrame(1.1, this.buildTcp(clientMac, gwMac, clientIp, srv1Ip, cPort2, sPort2, cSeq2AfterReq, sSeqAfterSeg1, 0x10, new Uint8Array(0)));
+                pushFrame(1.0, this.buildTcp(clientMac, gwMac, clientIp, srv1Ip, cPort2, sPort2, cSeq2AfterReq, sSeqAfterSeg1, 0x10, new Uint8Array(0)));
+
+                // Server performs Fast Retransmission of Segment #2 (1024 bytes, Seq 80513)
+                pushFrame(14.8, this.buildTcp(gwMac, clientMac, srv1Ip, clientIp, sPort2, cPort2, sSeqAfterSeg1, cSeq2AfterReq, 0x10, srvSeg2Dropped));
+
+                // Client cumulatively ACKs all bytes (Ack = 82049) & performs clean FIN teardown
+                const finalSSeq2 = sSeqAfterSeg2 + 512; // 82049
+                pushFrame(2.2, this.buildTcp(clientMac, gwMac, clientIp, srv1Ip, cPort2, sPort2, cSeq2AfterReq, finalSSeq2, 0x11, new Uint8Array(0))); // FIN-ACK
+                pushFrame(14.1, this.buildTcp(gwMac, clientMac, srv1Ip, clientIp, sPort2, cPort2, finalSSeq2, cSeq2AfterReq + 1, 0x11, new Uint8Array(0))); // FIN-ACK
+                pushFrame(1.2, this.buildTcp(clientMac, gwMac, clientIp, srv1Ip, cPort2, sPort2, cSeq2AfterReq + 1, finalSSeq2 + 1, 0x10, new Uint8Array(0))); // ACK
+
+                // =========================================================================
+                // FLOW 3: Abrupt Server RST (10.0.1.15:52420 -> 192.168.10.88:8080)
+                // =========================================================================
+                const cPort3 = 52420;
+                const sPort3 = 8080;
+                pushFrame(35.0, this.buildTcp(clientMac, gwMac, clientIp, srv3Ip, cPort3, sPort3, 30000, 0, 0x02, new Uint8Array(0))); // SYN
+                pushFrame(18.4, this.buildTcp(gwMac, clientMac, srv3Ip, clientIp, sPort3, cPort3, 90000, 30001, 0x12, new Uint8Array(0))); // SYN-ACK
+                pushFrame(1.1, this.buildTcp(clientMac, gwMac, clientIp, srv3Ip, cPort3, sPort3, 30001, 90001, 0x10, new Uint8Array(0))); // ACK
+
+                const getAdmin = this.strToBytes('GET /internal/metrics HTTP/1.1\r\nHost: 192.168.10.88:8080\r\n\r\n');
+                pushFrame(3.0, this.buildTcp(clientMac, gwMac, clientIp, srv3Ip, cPort3, sPort3, 30001, 90001, 0x18, getAdmin));
+                // Server replies with RST-ACK
+                pushFrame(19.6, this.buildTcp(gwMac, clientMac, srv3Ip, clientIp, sPort3, cPort3, 90001, 30001 + getAdmin.length, 0x14, new Uint8Array(0)));
+
+                // Assemble full binary Libpcap file buffer
+                let totalSize = 24;
+                for (const r of records) totalSize += 16 + r.frame.length;
+
+                const outBuf = new ArrayBuffer(totalSize);
+                const outView = new DataView(outBuf);
+                const outBytes = new Uint8Array(outBuf);
+
+                // Little-endian microsecond Libpcap global header (0xd4c3b2a1 in BE = 0xa1b2c3d4 in LE)
+                outView.setUint32(0, 0xa1b2c3d4, true);
+                outView.setUint16(4, 2, true);
+                outView.setUint16(6, 4, true);
+                outView.setInt32(8, 0, true);
+                outView.setUint32(12, 0, true);
+                outView.setUint32(16, 65535, true);
+                outView.setUint32(20, 1, true); // DLT_EN10MB
+
+                let ptr = 24;
+                for (const r of records) {
+                    outView.setUint32(ptr, r.sec, true);
+                    outView.setUint32(ptr + 4, r.usec, true);
+                    outView.setUint32(ptr + 8, r.frame.length, true);
+                    outView.setUint32(ptr + 12, r.frame.length, true);
+                    ptr += 16;
+                    outBytes.set(r.frame, ptr);
+                    ptr += r.frame.length;
+                }
+
+                return outBuf;
+            }
+        }
+
+        // ============================================================================
+        // CHARTS RENDERER (CHART.JS + OFFLINE NATIVE CANVAS FALLBACK)
+        // ============================================================================
+        function renderOverviewCharts(packets) {
+            const totalDuration = packets.length > 1 ? Math.max(0.001, packets[packets.length - 1].relTime) : 1;
+            const bucketCount = Math.min(20, Math.max(6, Math.ceil(packets.length / 2)));
+            const bucketWidth = totalDuration / bucketCount;
+
+            const labels = [];
+            const pktBuckets = new Array(bucketCount).fill(0);
+            const byteBuckets = new Array(bucketCount).fill(0);
+
+            for (let i = 0; i < bucketCount; i++) {
+                labels.push(`${(i * bucketWidth * 1000).toFixed(0)}ms`);
+            }
+
+            const protoCounts = {};
+            const talkerBytes = {};
+
+            for (const p of packets) {
+                const idx = Math.min(bucketCount - 1, Math.floor(p.relTime / bucketWidth));
+                pktBuckets[idx]++;
+                byteBuckets[idx] += p.length;
+
+                protoCounts[p.protocol] = (protoCounts[p.protocol] || 0) + 1;
+                if (p.src && p.src !== '—') {
+                    talkerBytes[p.src] = (talkerBytes[p.src] || 0) + p.length;
+                }
+            }
+
+            const protoLabels = Object.keys(protoCounts);
+            const protoValues = Object.values(protoCounts);
+
+            const sortedTalkers = Object.entries(talkerBytes)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 6);
+            const talkerLabels = sortedTalkers.map(x => x[0]);
+            const talkerValues = sortedTalkers.map(x => x[1]);
+
+            if (typeof window.Chart !== 'undefined') {
+                // Destroy old instances cleanly
+                Object.values(AppState.charts).forEach(ch => { if (ch) ch.destroy(); });
+
+                const commonGrid = { color: 'rgba(51, 65, 85, 0.45)' };
+                const commonTick = { color: '#94a3b8', font: { family: 'JetBrains Mono', size: 10 } };
+
+                AppState.charts.timeline = new Chart(document.getElementById('chart-timeline'), {
+                    type: 'bar',
+                    data: {
+                        labels,
+                        datasets: [
+                            {
+                                label: 'Packets',
+                                data: pktBuckets,
+                                backgroundColor: 'rgba(56, 189, 248, 0.55)',
+                                borderColor: '#38bdf8',
+                                borderWidth: 1,
+                                borderRadius: 4,
+                                yAxisID: 'y'
+                            },
+                            {
+                                type: 'line',
+                                label: 'Bytes',
+                                data: byteBuckets,
+                                borderColor: '#10b981',
+                                backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                                tension: 0.3,
+                                pointRadius: 2,
+                                yAxisID: 'y1'
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { labels: { color: '#cbd5e1', font: { size: 11 } } } },
+                        scales: {
+                            x: { grid: commonGrid, ticks: commonTick },
+                            y: { position: 'left', grid: commonGrid, ticks: commonTick },
+                            y1: { position: 'right', grid: { drawOnChartArea: false }, ticks: commonTick }
+                        }
+                    }
+                });
+
+                const palette = ['#38bdf8', '#10b981', '#f59e0b', '#a855f7', '#ec4899', '#64748b'];
+                AppState.charts.protocols = new Chart(document.getElementById('chart-protocols'), {
+                    type: 'doughnut',
+                    data: {
+                        labels: protoLabels,
+                        datasets: [{
+                            data: protoValues,
+                            backgroundColor: palette.slice(0, protoLabels.length),
+                            borderColor: '#0f172a',
+                            borderWidth: 2
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        cutout: '62%',
+                        plugins: { legend: { position: 'bottom', labels: { color: '#cbd5e1', font: { family: 'JetBrains Mono', size: 10 } } } }
+                    }
+                });
+
+                AppState.charts.talkers = new Chart(document.getElementById('chart-talkers'), {
+                    type: 'bar',
+                    data: {
+                        labels: talkerLabels,
+                        datasets: [{
+                            label: 'Bytes Sent',
+                            data: talkerValues,
+                            backgroundColor: 'rgba(56, 189, 248, 0.65)',
+                            borderColor: '#38bdf8',
+                            borderWidth: 1,
+                            borderRadius: 4
+                        }]
+                    },
+                    options: {
+                        indexAxis: 'y',
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            x: { grid: commonGrid, ticks: commonTick },
+                            y: { grid: { display: false }, ticks: commonTick }
+                        }
+                    }
+                });
+            } else {
+                // Offline Native Canvas Fallback if CDN is unreachable
+                drawFallbackBarChart('chart-timeline', labels, pktBuckets, '#38bdf8');
+                drawFallbackBarChart('chart-protocols', protoLabels, protoValues, '#10b981');
+                drawFallbackBarChart('chart-talkers', talkerLabels, talkerValues, '#f59e0b');
+            }
+        }
+
+        function drawFallbackBarChart(canvasId, labels, values, color) {
+            const canvas = document.getElementById(canvasId);
+            if (!canvas) return;
+            const rect = canvas.parentElement.getBoundingClientRect();
+            canvas.width = Math.max(260, rect.width);
+            canvas.height = Math.max(200, rect.height);
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            const maxVal = Math.max(1, ...values);
+            const pad = 28;
+            const chartW = canvas.width - pad * 2;
+            const chartH = canvas.height - pad * 2;
+            const barW = Math.max(8, (chartW / Math.max(1, values.length)) * 0.65);
+
+            ctx.fillStyle = '#94a3b8';
+            ctx.font = '10px monospace';
+            values.forEach((v, i) => {
+                const x = pad + (i + 0.5) * (chartW / values.length) - barW / 2;
+                const h = (v / maxVal) * chartH;
+                const y = pad + chartH - h;
+                ctx.fillStyle = color;
+                ctx.fillRect(x, y, barW, h);
+                ctx.fillStyle = '#cbd5e1';
+                ctx.fillText(String(labels[i] || '').slice(0, 10), x, canvas.height - 8);
+            });
+        }
+
+        // ============================================================================
+        // RENDERING: OVERVIEW KPIs, SEQUENCE LADDER, PACKET LIST, & INSPECTOR
+        // ============================================================================
+        function renderOverviewTab() {
+            const packets = AppState.packets;
+            const flows = AppState.flows;
+
+            const totalBytes = packets.reduce((sum, p) => sum + p.length, 0);
+            const duration = packets.length > 1 ? packets[packets.length - 1].relTime : 0;
+            const rate = duration > 0 ? totalBytes / duration : totalBytes;
+
+            const uniqueIps = new Set();
+            packets.forEach(p => {
+                if (p.src && p.src !== '—') uniqueIps.add(p.src);
+                if (p.dst && p.dst !== '—') uniqueIps.add(p.dst);
+            });
+
+            let totalClientDrops = 0;
+            let totalServerDrops = 0;
+            let totalRetrans = 0;
+
+            flows.forEach(f => {
+                totalClientDrops += f.stats.clientDrops;
+                totalServerDrops += f.stats.serverDrops;
+                totalRetrans += f.stats.clientFastRetrans + f.stats.serverFastRetrans;
+            });
+
+            const totalDrops = totalClientDrops + totalServerDrops;
+
+            document.getElementById('kpi-total-packets').textContent = packets.length.toLocaleString();
+            document.getElementById('kpi-duration').textContent = `Duration: ${duration.toFixed(3)} s`;
+            document.getElementById('kpi-total-bytes').textContent = formatBytes(totalBytes);
+            document.getElementById('kpi-throughput').textContent = `Avg Rate: ${formatBytes(rate)}/s`;
+            document.getElementById('kpi-tcp-flows').textContent = flows.length;
+            document.getElementById('kpi-endpoints').textContent = `${uniqueIps.size} unique IP endpoints`;
+            document.getElementById('kpi-drops-count').textContent = totalDrops;
+            document.getElementById('kpi-retrans-sub').textContent = `${totalRetrans} fast retransmits`;
+            document.getElementById('kpi-drop-split').textContent = `Client Uplink: ${totalClientDrops} • Server Downlink: ${totalServerDrops}`;
+
+            document.getElementById('badge-tab-drops').textContent = `${totalDrops} drop${totalDrops === 1 ? '' : 's'}`;
+            document.getElementById('badge-tab-packets').textContent = packets.length;
+
+            // Populate Overview Flows Summary Table
+            const tbody = document.getElementById('overview-flows-tbody');
+            if (flows.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="7" class="py-6 px-4 text-center text-slate-500">No TCP flows found in this capture.</td></tr>`;
+            } else {
+                tbody.innerHTML = flows.map(f => `
+                    <tr data-jump-flow="${f.id}" class="hover:bg-slate-800/60 cursor-pointer transition">
+                        <td class="py-2.5 px-4 font-semibold text-sky-400">Flow #${f.id}</td>
+                        <td class="py-2.5 px-4 text-slate-200">${escapeHtml(f.clientEp)}</td>
+                        <td class="py-2.5 px-4 text-slate-200">${escapeHtml(f.serverEp)}</td>
+                        <td class="py-2.5 px-4 text-slate-300">${f.packets.length}</td>
+                        <td class="py-2.5 px-4 ${f.stats.clientDrops > 0 ? 'text-rose-400 font-bold' : 'text-slate-400'}">${f.stats.clientDrops} (${formatBytes(f.stats.clientLostBytes)})</td>
+                        <td class="py-2.5 px-4 ${f.stats.serverDrops > 0 ? 'text-amber-400 font-bold' : 'text-slate-400'}">${f.stats.serverDrops} (${formatBytes(f.stats.serverLostBytes)})</td>
+                        <td class="py-2.5 px-4">
+                            <span class="px-2 py-0.5 rounded border text-[11px] font-semibold ${f.healthBadgeClass}">${escapeHtml(f.healthStatus)}</span>
+                        </td>
+                    </tr>
+                `).join('');
+            }
+
+            renderOverviewCharts(packets);
+        }
+
+        function populateSequenceFlowDropdown() {
+            const select = document.getElementById('seq-flow-select');
+            const flows = AppState.flows;
+
+            if (flows.length === 0) {
+                select.innerHTML = `<option value="">No TCP flows available in this capture</option>`;
+                AppState.selectedFlowId = null;
+                return;
+            }
+
+            select.innerHTML = flows.map(f => {
+                const label = `Flow #${f.id}: ${f.clientEp} (Client) <-> ${f.serverEp} (Server) | ${f.packets.length} pkts | [${f.healthStatus}]`;
+                return `<option value="${f.id}">${escapeHtml(label)}</option>`;
+            }).join('');
+
+            if (!AppState.selectedFlowId || !flows.some(f => String(f.id) === String(AppState.selectedFlowId))) {
+                AppState.selectedFlowId = String(flows[0].id);
+            }
+            select.value = AppState.selectedFlowId;
+        }
+
+        function renderSequenceTab() {
+            const flows = AppState.flows;
+            const ladderBody = document.getElementById('sequence-ladder-body');
+
+            if (flows.length === 0) {
+                ladderBody.innerHTML = `<div class="p-10 text-center text-slate-500 text-xs font-mono">No TCP sessions detected in this PCAP file. Load the Sample PCAP or a TCP capture to view sequence ladders.</div>`;
+                return;
+            }
+
+            const flow = flows.find(f => String(f.id) === String(AppState.selectedFlowId)) || flows[0];
+            const st = flow.stats;
+
+            // Update swimlane headers
+            document.getElementById('ladder-client-endpoint').textContent = `CLIENT (${flow.clientEp})`;
+            document.getElementById('ladder-server-endpoint').textContent = `SERVER (${flow.serverEp})`;
+            document.getElementById('diag-flow-endpoints').textContent = `Flow #${flow.id}: ${flow.clientEp} <-> ${flow.serverEp}`;
+
+            // Update Client -> Server Diagnostic Card
+            document.getElementById('diag-c2s-sent').textContent = st.c2sPackets;
+            document.getElementById('diag-c2s-drops').textContent = st.clientDrops;
+            document.getElementById('diag-c2s-lost-bytes').textContent = formatBytes(st.clientLostBytes);
+            document.getElementById('diag-c2s-detail').textContent =
+                `Dup ACKs sent by Client: ${st.clientDupAcksSent} • Fast Retransmits: ${st.clientFastRetrans} • Zero Win: ${st.clientZeroWin}`;
+
+            const c2sBadge = document.getElementById('diag-c2s-badge');
+            if (st.clientDrops > 0) {
+                c2sBadge.textContent = `${st.clientDrops} UPLINK DROP${st.clientDrops > 1 ? 'S' : ''}`;
+                c2sBadge.className = 'px-2 py-0.5 rounded text-[10px] font-mono bg-rose-500/20 text-rose-300 border border-rose-500/40 font-bold';
+            } else {
+                c2sBadge.textContent = 'HEALTHY';
+                c2sBadge.className = 'px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-500/15 text-emerald-300 border border-emerald-500/30';
+            }
+
+            // Update Server -> Client Diagnostic Card
+            document.getElementById('diag-s2c-sent').textContent = st.s2cPackets;
+            document.getElementById('diag-s2c-drops').textContent = st.serverDrops;
+            document.getElementById('diag-s2c-lost-bytes').textContent = formatBytes(st.serverLostBytes);
+            document.getElementById('diag-s2c-detail').textContent =
+                `Dup ACKs sent by Server: ${st.serverDupAcksSent} • Fast Retransmits: ${st.serverFastRetrans} • Zero Win: ${st.serverZeroWin}`;
+
+            const s2cBadge = document.getElementById('diag-s2c-badge');
+            if (st.serverDrops > 0) {
+                s2cBadge.textContent = `${st.serverDrops} DOWNLINK DROP${st.serverDrops > 1 ? 'S' : ''}`;
+                s2cBadge.className = 'px-2 py-0.5 rounded text-[10px] font-mono bg-rose-500/20 text-rose-300 border border-rose-500/40 font-bold';
+            } else {
+                s2cBadge.textContent = 'HEALTHY';
+                s2cBadge.className = 'px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-500/15 text-emerald-300 border border-emerald-500/30';
+            }
+
+            // Root-Cause Diagnosis Text
+            const diagParts = [];
+            if (st.clientDrops > 0) {
+                diagParts.push(`Client Uplink Drop: ${st.clientDrops} segment(s) (${formatBytes(st.clientLostBytes)}) dropped before reaching Server. Server signaled loss via ${st.serverDupAcksSent} Duplicate ACK(s), and Client recovered via Fast Retransmission.`);
+            }
+            if (st.serverDrops > 0) {
+                diagParts.push(`Server Downlink Drop: ${st.serverDrops} segment(s) (${formatBytes(st.serverLostBytes)}) dropped before reaching Client. Client signaled loss via ${st.clientDupAcksSent} Duplicate ACK(s), and Server recovered via Fast Retransmission.`);
+            }
+            if (st.resets > 0) {
+                diagParts.push(`Connection Aborted: Server/peer issued ${st.resets} TCP RST flag(s), immediately terminating the session.`);
+            }
+            if (diagParts.length === 0) {
+                diagParts.push('Clean TCP Session: All sequence numbers progressed contiguously with zero packet drops, zero duplicate ACKs, and zero resets.');
+            }
+
+            document.getElementById('diag-root-cause-text').textContent = diagParts.join(' ');
+            document.getElementById('diag-recovery-time').textContent = flow.avgRecoveryMs !== null
+                ? `Avg Recovery: ${flow.avgRecoveryMs.toFixed(1)} ms`
+                : 'Recovery: N/A';
+
+            const pillsContainer = document.getElementById('diag-anomaly-pills');
+            const summaryPills = [];
+            if (st.clientDrops > 0) summaryPills.push(`<span class="px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[10px] font-mono">Client Drops: ${st.clientDrops}</span>`);
+            if (st.serverDrops > 0) summaryPills.push(`<span class="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-mono">Server Drops: ${st.serverDrops}</span>`);
+            if (st.clientDupAcksSent + st.serverDupAcksSent > 0) summaryPills.push(`<span class="px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 text-[10px] font-mono">Dup ACKs: ${st.clientDupAcksSent + st.serverDupAcksSent}</span>`);
+            if (st.resets > 0) summaryPills.push(`<span class="px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[10px] font-mono">RST: ${st.resets}</span>`);
+            if (summaryPills.length === 0) summaryPills.push(`<span class="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[10px] font-mono">0 Anomalies</span>`);
+            pillsContainer.innerHTML = summaryPills.join('');
+
+            // Filter Events if "Anomalies & Drops Only" is active
+            const visibleEvents = AppState.seqAnomaliesOnly
+                ? flow.events.filter(ev => ev.kind === 'DROP_MARKER' || (ev.tags && ev.tags.length > 0))
+                : flow.events;
+
+            if (visibleEvents.length === 0) {
+                ladderBody.innerHTML = `<div class="p-10 text-center text-slate-500 text-xs font-mono">No anomalies or drops in this flow. Switch to "Show All Packets" to view the complete ladder diagram.</div>`;
+                return;
+            }
+
+            // Render Ladder Rows with Inline SVG Arrows
+            ladderBody.innerHTML = visibleEvents.map(ev => {
+                if (ev.kind === 'DROP_MARKER') {
+                    const isC2S = ev.direction === 'C2S';
+                    const dropSvg = isC2S
+                        ? `<svg class="w-full h-9 overflow-visible" viewBox="0 0 400 36" preserveAspectRatio="none">
+                               <line x1="8" y1="18" x2="212" y2="18" stroke="#ef4444" stroke-width="2.5" stroke-dasharray="6,5" />
+                               <circle cx="220" cy="18" r="8.5" fill="#450a0a" stroke="#ef4444" stroke-width="2" />
+                               <path d="M216 14 L224 22 M224 14 L216 22" stroke="#fca5a5" stroke-width="2" stroke-linecap="round" />
+                           </svg>`
+                        : `<svg class="w-full h-9 overflow-visible" viewBox="0 0 400 36" preserveAspectRatio="none">
+                               <line x1="392" y1="18" x2="188" y2="18" stroke="#ef4444" stroke-width="2.5" stroke-dasharray="6,5" />
+                               <circle cx="180" cy="18" r="8.5" fill="#450a0a" stroke="#ef4444" stroke-width="2" />
+                               <path d="M176 14 L184 22 M184 14 L176 22" stroke="#fca5a5" stroke-width="2" stroke-linecap="round" />
+                           </svg>`;
+
+                    return `
+                        <div class="grid grid-cols-12 items-center px-4 py-2 bg-rose-950/35 border-y border-rose-500/35 text-xs font-mono" title="${escapeHtml(ev.detail)}">
+                            <div class="col-span-3 sm:col-span-2 text-rose-400">
+                                <div>+${(ev.relTime * 1000).toFixed(2)} ms</div>
+                                <div class="text-[10px] text-rose-300/80">SEQUENCE GAP</div>
+                            </div>
+                            <div class="col-span-9 sm:col-span-10 flex flex-col items-center">
+                                <div class="flex flex-wrap items-center justify-center gap-2 mb-0.5">
+                                    <span class="px-2 py-0.5 rounded bg-rose-500/25 border border-rose-500/50 text-rose-200 font-bold text-[10px]">
+                                        &#10005; ${escapeHtml(ev.label)}
+                                    </span>
+                                    <span class="text-rose-300 text-[11px]">(${isC2S ? 'Client &rarr; Server' : 'Server &rarr; Client'})</span>
+                                </div>
+                                <div class="w-full max-w-2xl relative">
+                                    <div class="absolute left-2 top-0 bottom-0 w-px bg-sky-500/25"></div>
+                                    <div class="absolute right-2 top-0 bottom-0 w-px bg-emerald-500/25"></div>
+                                    ${dropSvg}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                const pkt = ev.pkt;
+                const isC2S = ev.direction === 'C2S';
+                const isSelected = AppState.selectedPacketNo === pkt.no;
+                const hasDanger = ev.tags.some(t => t.severity === 'danger');
+                const hasWarning = ev.tags.some(t => t.severity === 'warning');
+
+                let stroke = isC2S ? '#38bdf8' : '#10b981';
+                let rowTint = 'hover:bg-slate-900/90';
+                if (hasDanger) {
+                    stroke = '#ef4444';
+                    rowTint = 'bg-rose-950/20 hover:bg-rose-950/35';
+                } else if (hasWarning) {
+                    stroke = '#f59e0b';
+                    rowTint = 'bg-amber-950/20 hover:bg-amber-950/35';
+                }
+
+                // Sloped directional SVG arrow representing packet transit
+                const arrowSvg = isC2S
+                    ? `<svg class="w-full h-8 overflow-visible" viewBox="0 0 400 32" preserveAspectRatio="none">
+                           <line x1="8" y1="11" x2="385" y2="21" stroke="${stroke}" stroke-width="2" ${ev.isRetransmit ? 'stroke-dasharray="5,3"' : ''} />
+                           <polygon points="392,21 381,16 381,26" fill="${stroke}" />
+                       </svg>`
+                    : `<svg class="w-full h-8 overflow-visible" viewBox="0 0 400 32" preserveAspectRatio="none">
+                           <line x1="392" y1="11" x2="15" y2="21" stroke="${stroke}" stroke-width="2" ${ev.isRetransmit ? 'stroke-dasharray="5,3"' : ''} />
+                           <polygon points="8,21 19,16 19,26" fill="${stroke}" />
+                       </svg>`;
+
+                const badgesHtml = ev.tags.map(tag => {
+                    const cls = tag.severity === 'danger'
+                        ? 'bg-rose-500/25 text-rose-200 border-rose-500/50'
+                        : 'bg-amber-500/25 text-amber-200 border-amber-500/50';
+                    return `<span class="px-1.5 py-0.5 rounded border text-[10px] font-bold ${cls}" title="${escapeHtml(tag.detail)}">${escapeHtml(tag.label)}</span>`;
+                }).join(' ');
+
+                return `
+                    <div data-inspect-pkt="${pkt.no}" class="grid grid-cols-12 items-center px-4 py-2 cursor-pointer transition font-mono text-xs ${rowTint} ${isSelected ? 'seq-row-active' : ''}">
+                        <div class="col-span-3 sm:col-span-2 text-slate-400">
+                            <div class="text-slate-200 font-semibold">#${pkt.no} <span class="text-slate-400 font-normal">+${(ev.relTime * 1000).toFixed(2)}ms</span></div>
+                            <div class="text-[10px] text-slate-500">&Delta;t +${ev.deltaMs.toFixed(2)}ms</div>
+                        </div>
+
+                        <div class="col-span-9 sm:col-span-10 flex flex-col items-center">
+                            <div class="flex flex-wrap items-center justify-center gap-1.5 text-[11px] mb-0.5">
+                                <span class="px-1.5 py-0.2 rounded bg-slate-800 text-slate-200 font-semibold border border-slate-700">[${escapeHtml(ev.flagsStr)}]</span>
+                                <span class="text-slate-200">Seq=${pkt.tcp.seq}</span>
+                                <span class="text-slate-300">Ack=${pkt.tcp.ack}</span>
+                                <span class="text-sky-300">Len=${ev.payloadLen}</span>
+                                <span class="text-slate-400">Win=${ev.windowSize}</span>
+                                ${badgesHtml}
+                            </div>
+                            <div class="w-full max-w-2xl relative">
+                                <div class="absolute left-2 top-0 bottom-0 w-px bg-sky-500/25"></div>
+                                <div class="absolute right-2 top-0 bottom-0 w-px bg-emerald-500/25"></div>
+                                ${arrowSvg}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderPacketListTab() {
+            const q = AppState.pktSearchQuery.trim().toLowerCase();
+            const proto = AppState.pktProtocolFilter;
+
+            const filtered = AppState.packets.filter(p => {
+                if (proto === 'ANOMALY') {
+                    if (!p.anomalies || p.anomalies.length === 0) return false;
+                } else if (proto !== 'ALL') {
+                    if (p.protocol !== proto) return false;
+                }
+
+                if (q) {
+                    const hay = `${p.no} ${p.src} ${p.dst} ${p.protocol} ${p.info}`.toLowerCase();
+                    if (!hay.includes(q)) return false;
+                }
+                return true;
+            });
+
+            document.getElementById('pkt-table-count').textContent = `Showing ${filtered.length} of ${AppState.packets.length} packets`;
+            const tbody = document.getElementById('pkt-table-body');
+
+            if (filtered.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="7" class="py-8 px-4 text-center text-slate-500">No packets match the current search or protocol filter.</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = filtered.slice(0, 1000).map(p => {
+                const hasDanger = p.anomalies && p.anomalies.some(a => a.severity === 'danger');
+                const hasWarn = p.anomalies && p.anomalies.some(a => a.severity === 'warning');
+                const isSelected = AppState.selectedPacketNo === p.no;
+
+                // Wireshark-inspired dark row tinting
+                let rowBg = 'hover:bg-slate-800/70';
+                if (hasDanger) rowBg = 'bg-rose-950/35 text-rose-100 hover:bg-rose-950/55';
+                else if (hasWarn) rowBg = 'bg-amber-950/30 text-amber-100 hover:bg-amber-950/50';
+                else if (p.protocol === 'HTTP') rowBg = 'bg-emerald-950/20 hover:bg-emerald-950/35';
+                else if (p.protocol === 'DNS' || p.protocol === 'UDP') rowBg = 'bg-sky-950/20 hover:bg-sky-950/35';
+                else if (p.protocol === 'ICMP') rowBg = 'bg-purple-950/20 hover:bg-purple-950/35';
+
+                const protoColors = {
+                    TCP: 'bg-slate-800 text-sky-300 border-slate-700',
+                    HTTP: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
+                    UDP: 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30',
+                    DNS: 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30',
+                    ICMP: 'bg-fuchsia-500/15 text-fuchsia-300 border-fuchsia-500/30',
+                    ARP: 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                };
+                const badgeCls = protoColors[p.protocol] || 'bg-slate-800 text-slate-300 border-slate-700';
+
+                const anomalyBadges = (p.anomalies || []).map(a => {
+                    const cls = a.severity === 'danger'
+                        ? 'bg-rose-500/25 text-rose-200 border-rose-500/50'
+                        : 'bg-amber-500/25 text-amber-200 border-amber-500/50';
+                    return `<span class="ml-1.5 px-1.5 py-0.2 rounded border text-[10px] font-bold ${cls}">${escapeHtml(a.label)}</span>`;
+                }).join('');
+
+                return `
+                    <tr data-inspect-pkt="${p.no}" class="cursor-pointer transition ${rowBg} ${isSelected ? 'pkt-row-active' : ''}">
+                        <td class="py-2 px-3 text-slate-400">${p.no}</td>
+                        <td class="py-2 px-3 text-slate-400 mono-tabular">${p.relTime.toFixed(6)}</td>
+                        <td class="py-2 px-3 text-slate-200">${escapeHtml(p.src)}</td>
+                        <td class="py-2 px-3 text-slate-200">${escapeHtml(p.dst)}</td>
+                        <td class="py-2 px-3"><span class="px-1.5 py-0.5 rounded border text-[10px] font-semibold ${badgeCls}">${escapeHtml(p.protocol)}</span></td>
+                        <td class="py-2 px-3 text-slate-400">${p.length}</td>
+                        <td class="py-2 px-3 text-slate-200 break-all">${escapeHtml(p.info)}${anomalyBadges}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function inspectPacketByNo(pktNo) {
+            const pkt = AppState.packets.find(p => p.no === Number(pktNo));
+            if (!pkt) return;
+            AppState.selectedPacketNo = pkt.no;
+
+            // Sync active highlight in both Sequence Ladder & Packet Table
+            document.querySelectorAll('[data-inspect-pkt]').forEach(el => {
+                const match = Number(el.dataset.inspectPkt) === pkt.no;
+                if (el.tagName === 'TR') {
+                    el.classList.toggle('pkt-row-active', match);
+                } else {
+                    el.classList.toggle('seq-row-active', match);
+                }
+            });
+
+            document.getElementById('inspector-selected-badge').textContent =
+                `Packet #${pkt.no} • ${pkt.protocol} (${pkt.src} -> ${pkt.dst})`;
+            document.getElementById('inspector-byte-len').textContent = `${pkt.raw.length} bytes`;
+
+            // Render Anomaly Alerts + Protocol Tree
+            const layersContainer = document.getElementById('inspector-layers-container');
+            const anomalyBlock = (pkt.anomalies || []).map(a => {
+                const cls = a.severity === 'danger'
+                    ? 'bg-rose-950/70 border-rose-500/50 text-rose-200'
+                    : 'bg-amber-950/70 border-amber-500/50 text-amber-200';
+                return `
+                    <div class="p-2.5 rounded-lg border ${cls} text-[11px]">
+                        <div class="font-bold uppercase tracking-wider mb-0.5">${escapeHtml(a.label)}</div>
+                        <div class="opacity-90">${escapeHtml(a.detail)}</div>
+                    </div>
+                `;
+            }).join('');
+
+            const layersHtml = pkt.layers.map((layer, idx) => {
+                const rows = Object.entries(layer.fields).map(([k, v]) => `
+                    <div class="flex justify-between gap-4 py-0.5 border-b border-slate-800/50 last:border-none">
+                        <span class="text-slate-400 shrink-0">${escapeHtml(k)}:</span>
+                        <span class="text-slate-200 text-right break-all">${escapeHtml(v)}</span>
+                    </div>
+                `).join('');
+
+                return `
+                    <details ${idx >= pkt.layers.length - 2 ? 'open' : ''} class="bg-slate-950/75 border border-slate-800 rounded-lg overflow-hidden">
+                        <summary class="px-3 py-2 bg-slate-800/70 hover:bg-slate-800 text-sky-300 font-semibold cursor-pointer select-none">
+                            ${escapeHtml(layer.name)}
+                        </summary>
+                        <div class="p-2.5 space-y-1 text-[11px]">${rows}</div>
+                    </details>
+                `;
+            }).join('');
+
+            layersContainer.innerHTML = anomalyBlock + layersHtml;
+
+            // Render Hex + ASCII Side-by-Side Dump
+            document.getElementById('inspector-hex-container').innerHTML = buildHexAsciiHtml(pkt.raw);
+        }
+
+        function buildHexAsciiHtml(bytes) {
+            const lines = [];
+            for (let offset = 0; offset < bytes.length; offset += 16) {
+                const addr = offset.toString(16).padStart(4, '0');
+                const hexParts = [];
+                let asciiPart = '';
+
+                for (let i = 0; i < 16; i++) {
+                    if (offset + i < bytes.length) {
+                        const b = bytes[offset + i];
+                        hexParts.push(`<span class="hex-byte px-0.5">${b.toString(16).padStart(2, '0')}</span>`);
+                        asciiPart += (b >= 32 && b <= 126) ? escapeHtml(String.fromCharCode(b)) : '.';
+                    } else {
+                        hexParts.push('<span class="px-0.5 opacity-0">00</span>');
+                        asciiPart += ' ';
+                    }
+                    if (i === 7) hexParts.push(' ');
+                }
+
+                lines.push(
+                    `<div class="flex gap-3 hover:bg-slate-900/90 px-1 rounded">` +
+                    `<span class="text-slate-500 select-none">${addr}</span>` +
+                    `<span class="text-sky-200/90">${hexParts.join('')}</span>` +
+                    `<span class="text-emerald-300/80 border-l border-slate-800 pl-2.5">${asciiPart}</span>` +
+                    `</div>`
+                );
+            }
+            return lines.join('');
+        }
+
+        // ============================================================================
+        // TAB NAVIGATION & FILE INGESTION CONTROLLER
+        // ============================================================================
+        function switchTab(tabName) {
+            AppState.activeTab = tabName;
+
+            document.querySelectorAll('.tab-panel').forEach(panel => {
+                panel.classList.toggle('hidden', panel.id !== `panel-${tabName}`);
+            });
+
+            document.querySelectorAll('.nav-tab-btn').forEach(btn => {
+                const isTarget = btn.dataset.tab === tabName;
+                if (isTarget) {
+                    btn.className = 'nav-tab-btn px-3.5 py-2 rounded-lg text-xs sm:text-sm font-semibold transition flex items-center gap-2 bg-sky-600 text-white shadow-sm cursor-pointer';
+                } else {
+                    btn.className = 'nav-tab-btn px-3.5 py-2 rounded-lg text-xs sm:text-sm font-semibold transition flex items-center gap-2 text-slate-400 hover:text-white cursor-pointer';
+                }
+            });
+
+            if (tabName === 'overview') renderOverviewCharts(AppState.packets);
+            if (tabName === 'sequence') renderSequenceTab();
+            if (tabName === 'packets') renderPacketListTab();
+        }
+
+        function loadPcapBuffer(arrayBuffer, fileName) {
+            try {
+                hideStatusBanner();
+                const parsed = PcapParser.parse(arrayBuffer);
+                AppState.fileName = fileName;
+                AppState.globalHeader = parsed.globalHeader;
+                AppState.packets = parsed.packets;
+                AppState.flows = TcpFlowAnalyzer.analyze(parsed.packets);
+                AppState.selectedFlowId = AppState.flows.length > 0 ? String(AppState.flows[0].id) : null;
+                AppState.selectedPacketNo = null;
+
+                const gh = parsed.globalHeader;
+                document.getElementById('header-file-meta').textContent =
+                    `${fileName} • ${gh.networkName} • Libpcap v${gh.version} (${gh.littleEndian ? 'LE' : 'BE'})`;
+                document.getElementById('capture-strip-summary').textContent =
+                    `Loaded ${parsed.packets.length} packets across ${AppState.flows.length} TCP flow(s)`;
+
+                populateSequenceFlowDropdown();
+                renderOverviewTab();
+                renderSequenceTab();
+                renderPacketListTab();
+
+                if (parsed.packets.length > 0) {
+                    inspectPacketByNo(parsed.packets[0].no);
+                }
+            } catch (err) {
+                console.error(err);
+                showStatusBanner(err.message || 'Failed to parse PCAP capture.', 'error');
+            }
+        }
+
+        function handleFileSelection(file) {
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                loadPcapBuffer(e.target.result, file.name);
+                showStatusBanner(`Successfully parsed "${file.name}" (${formatBytes(file.size)}).`, 'info');
+            };
+            reader.onerror = () => {
+                showStatusBanner(`Unable to read file "${file.name}".`, 'error');
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        // ============================================================================
+        // INITIALIZATION & EVENT LISTENERS
+        // ============================================================================
+        document.addEventListener('DOMContentLoaded', () => {
+            // Navigation Tabs
+            document.querySelectorAll('.nav-tab-btn').forEach(btn => {
+                btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+            });
+
+            // Load Sample PCAP Button
+            document.getElementById('btn-load-sample').addEventListener('click', () => {
+                const buf = SamplePcapGenerator.generate();
+                loadPcapBuffer(buf, 'sample_client_server_drops.pcap');
+                showStatusBanner('Loaded synthetic sample PCAP containing Client-to-Server packet drop, Server-to-Client packet drop, Duplicate ACKs, Fast Retransmissions, and Server RST.', 'info');
+            });
+
+            // File Input Picker
+            document.getElementById('pcap-file-input').addEventListener('change', (e) => {
+                if (e.target.files && e.target.files[0]) {
+                    handleFileSelection(e.target.files[0]);
+                    e.target.value = '';
+                }
+            });
+
+            // Global Window Drag & Drop
+            let dragCounter = 0;
+            const dragOverlay = document.getElementById('drag-overlay');
+            window.addEventListener('dragenter', (e) => {
+                e.preventDefault();
+                dragCounter++;
+                dragOverlay.classList.remove('hidden');
+            });
+            window.addEventListener('dragleave', (e) => {
+                e.preventDefault();
+                dragCounter--;
+                if (dragCounter <= 0) {
+                    dragCounter = 0;
+                    dragOverlay.classList.add('hidden');
+                }
+            });
+            window.addEventListener('dragover', (e) => {
+                e.preventDefault();
+            });
+            window.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dragCounter = 0;
+                dragOverlay.classList.add('hidden');
+                if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) {
+                    handleFileSelection(e.dataTransfer.files[0]);
+                }
+            });
+
+            // Status Banner Close
+            document.getElementById('status-banner-close').addEventListener('click', hideStatusBanner);
+
+            // Overview Flows Table Row Click -> Jump to Sequence Diagram for that Flow
+            document.getElementById('overview-flows-tbody').addEventListener('click', (e) => {
+                const tr = e.target.closest('tr[data-jump-flow]');
+                if (!tr) return;
+                AppState.selectedFlowId = tr.dataset.jumpFlow;
+                document.getElementById('seq-flow-select').value = AppState.selectedFlowId;
+                switchTab('sequence');
+            });
+
+            // Sequence Tab Controls
+            document.getElementById('seq-flow-select').addEventListener('change', (e) => {
+                AppState.selectedFlowId = e.target.value;
+                renderSequenceTab();
+            });
+
+            const btnSeqAll = document.getElementById('btn-seq-filter-all');
+            const btnSeqAnom = document.getElementById('btn-seq-filter-anomalies');
+
+            btnSeqAll.addEventListener('click', () => {
+                AppState.seqAnomaliesOnly = false;
+                btnSeqAll.className = 'px-3 py-1.5 rounded-md text-xs font-medium bg-sky-600 text-white transition cursor-pointer';
+                btnSeqAnom.className = 'px-3 py-1.5 rounded-md text-xs font-medium text-slate-400 hover:text-white transition cursor-pointer';
+                renderSequenceTab();
+            });
+
+            btnSeqAnom.addEventListener('click', () => {
+                AppState.seqAnomaliesOnly = true;
+                btnSeqAnom.className = 'px-3 py-1.5 rounded-md text-xs font-medium bg-rose-600 text-white transition cursor-pointer';
+                btnSeqAll.className = 'px-3 py-1.5 rounded-md text-xs font-medium text-slate-400 hover:text-white transition cursor-pointer';
+                renderSequenceTab();
+            });
+
+            // Packet List Search & Protocol Filter Pills
+            const searchInput = document.getElementById('pkt-search-input');
+            const searchClear = document.getElementById('pkt-search-clear');
+
+            searchInput.addEventListener('input', () => {
+                AppState.pktSearchQuery = searchInput.value;
+                searchClear.classList.toggle('hidden', !searchInput.value);
+                renderPacketListTab();
+            });
+
+            searchClear.addEventListener('click', () => {
+                searchInput.value = '';
+                AppState.pktSearchQuery = '';
+                searchClear.classList.add('hidden');
+                renderPacketListTab();
+            });
+
+            document.getElementById('protocol-pills-bar').addEventListener('click', (e) => {
+                const pill = e.target.closest('.proto-pill');
+                if (!pill) return;
+                AppState.pktProtocolFilter = pill.dataset.proto;
+
+                document.querySelectorAll('.proto-pill').forEach(p => {
+                    const active = p === pill;
+                    if (p.dataset.proto === 'ANOMALY') {
+                        p.className = active
+                            ? 'proto-pill px-2.5 py-1 rounded-lg bg-rose-600 text-white font-semibold cursor-pointer'
+                            : 'proto-pill px-2.5 py-1 rounded-lg bg-rose-950/70 text-rose-300 border border-rose-500/40 hover:bg-rose-900/60 cursor-pointer';
+                    } else {
+                        p.className = active
+                            ? 'proto-pill px-2.5 py-1 rounded-lg bg-sky-600 text-white font-semibold cursor-pointer'
+                            : 'proto-pill px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 cursor-pointer';
+                    }
+                });
+
+                renderPacketListTab();
+            });
+
+            // Delegated Click for Inspecting Packets from Sequence Ladder or Packet Table
+            document.addEventListener('click', (e) => {
+                const inspectTarget = e.target.closest('[data-inspect-pkt]');
+                if (inspectTarget) {
+                    inspectPacketByNo(inspectTarget.dataset.inspectPkt);
+                }
+            });
+
+            // Automatically preload the Sample PCAP on startup
+            const initialSample = SamplePcapGenerator.generate();
+            loadPcapBuffer(initialSample, 'sample_client_server_drops.pcap');
+        });
+    </script>
+</body>
+</html>
