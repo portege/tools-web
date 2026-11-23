@@ -61,19 +61,6 @@
             background-color: rgba(14, 116, 144, 0.32) !important;
             box-shadow: inset 3px 0 0 #38bdf8;
         }
-
-        /* Ensure the analyzer fills the iframe width and never shrinks */
-        html, body {
-            width: 100%;
-            min-width: 0;
-            overflow-x: hidden;
-        }
-        #main-drop-surface,
-        header > div,
-        .max-w-\[1600px\] {
-            width: 100% !important;
-            max-width: 100% !important;
-        }
     </style>
 </head>
 <body class="bg-slate-950 text-slate-200 font-sans antialiased min-h-screen flex flex-col selection:bg-sky-500/30 selection:text-sky-200">
@@ -93,7 +80,7 @@
                         <h1 class="text-base sm:text-lg font-bold tracking-tight text-white">PCAP NetLens</h1>
                         <span class="px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider rounded-full bg-sky-500/15 text-sky-400 border border-sky-500/30">Deep Flow &amp; Drop Analyzer</span>
                     </div>
-                    <p id="header-file-meta" class="text-xs text-slate-400 font-mono truncate max-w-[260px] sm:max-w-lg">No capture loaded — drag & drop a .pcap file or load the sample</p>
+                    <p id="header-file-meta" class="text-xs text-slate-400 font-mono truncate max-w-[260px] sm:max-w-lg">Initializing sample capture...</p>
                 </div>
             </div>
 
@@ -105,14 +92,6 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
                     </svg>
                     <span>Load Sample PCAP</span>
-                </button>
-
-                <button id="btn-clear-analysis" type="button"
-                    class="px-3.5 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 border border-slate-600 text-xs font-medium transition flex items-center gap-2 cursor-pointer">
-                    <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
-                    </svg>
-                    <span>Clear Analysis</span>
                 </button>
 
                 <label for="pcap-file-input"
@@ -2242,61 +2221,6 @@
             reader.readAsArrayBuffer(file);
         }
 
-        function clearAnalysis() {
-            // Destroy chart instances
-            Object.values(AppState.charts).forEach((ch) => { if (ch) ch.destroy(); });
-            AppState.charts = { timeline: null, protocols: null, talkers: null };
-
-            // Reset application state
-            AppState.fileName = '';
-            AppState.globalHeader = null;
-            AppState.packets = [];
-            AppState.flows = [];
-            AppState.activeTab = 'overview';
-            AppState.selectedFlowId = null;
-            AppState.seqAnomaliesOnly = false;
-            AppState.pktSearchQuery = '';
-            AppState.pktProtocolFilter = 'ALL';
-            AppState.selectedPacketNo = null;
-
-            // Reset header meta
-            document.getElementById('header-file-meta').textContent = 'No capture loaded — drag & drop a .pcap file or load the sample';
-            document.getElementById('capture-strip-summary').textContent = 'Ready • Drag & drop any .pcap file anywhere';
-
-            // Reset KPI cards
-            document.getElementById('kpi-total-packets').textContent = '0';
-            document.getElementById('kpi-duration').textContent = 'Duration: 0.000 s';
-            document.getElementById('kpi-total-bytes').textContent = '0 B';
-            document.getElementById('kpi-throughput').textContent = 'Avg Rate: 0 B/s';
-            document.getElementById('kpi-tcp-flows').textContent = '0';
-            document.getElementById('kpi-endpoints').textContent = '0 unique IP endpoints';
-            document.getElementById('kpi-drops-count').textContent = '0';
-            document.getElementById('kpi-retrans-sub').textContent = '0 retransmits';
-            document.getElementById('kpi-drop-split').textContent = 'Client: 0 • Server: 0';
-
-            // Clear tables and ladder
-            document.getElementById('overview-flows-tbody').innerHTML = '';
-            document.getElementById('sequence-ladder-body').innerHTML = '<div class="p-10 text-center text-slate-500 text-xs font-mono">Load a capture to view sequence ladders.</div>';
-            document.getElementById('pkt-table-body').innerHTML = '';
-            document.getElementById('pkt-table-count').textContent = 'Showing 0 packets';
-
-            // Clear packet inspector
-            document.getElementById('inspector-layers-container').innerHTML = '<div class="text-slate-500 text-center py-8">Select a packet from the Sequence Diagram or Packet List to decode headers.</div>';
-            document.getElementById('inspector-hex-container').innerHTML = '<div class="text-slate-500 text-center py-8">Raw frame hex &amp; ASCII representation will appear here.</div>';
-            document.getElementById('inspector-selected-badge').textContent = 'No packet selected';
-            document.getElementById('inspector-byte-len').textContent = '0 bytes';
-
-            // Reset flow dropdown
-            const flowSelect = document.getElementById('seq-flow-select');
-            if (flowSelect) flowSelect.innerHTML = '';
-
-            // Return to overview tab
-            switchTab('overview');
-
-            hideStatusBanner();
-            showStatusBanner('Analysis cleared.', 'info');
-        }
-
         // ============================================================================
         // INITIALIZATION & EVENT LISTENERS
         // ============================================================================
@@ -2311,11 +2235,6 @@
                 const buf = SamplePcapGenerator.generate();
                 loadPcapBuffer(buf, 'sample_client_server_drops.pcap');
                 showStatusBanner('Loaded synthetic sample PCAP containing Client-to-Server packet drop, Server-to-Client packet drop, Duplicate ACKs, Fast Retransmissions, and Server RST.', 'info');
-            });
-
-            // Clear Analysis Button
-            document.getElementById('btn-clear-analysis').addEventListener('click', () => {
-                clearAnalysis();
             });
 
             // File Input Picker
