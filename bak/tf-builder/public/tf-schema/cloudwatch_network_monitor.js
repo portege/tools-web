@@ -1,0 +1,5 @@
+// Auto-generated Terraform AWS schema bundle for CloudWatch Network Monitor
+export const service = "CloudWatch Network Monitor";
+export const serviceSlug = "cloudwatch_network_monitor";
+export const allowedTargets = ["iam_role", "security_group", "cloudwatch", "s3", "lambda"];
+export const resources = {"aws_networkmonitor_monitor":{"type":"aws_networkmonitor_monitor","service":"CloudWatch Network Monitor","category":"CloudWatch Network Monitor","label":"AWS","shortType":"aws_networkmonitor_monitor","accent":"#38bdf8","defaultName":"networkmonitor_monitor","defaults":{},"fields":[],"outputs":["id"],"serviceSlug":"cloudwatch_network_monitor","allowedTargets":["iam_role","security_group","cloudwatch","s3","lambda"]},"aws_networkmonitor_probe":{"type":"aws_networkmonitor_probe","service":"CloudWatch Network Monitor","category":"CloudWatch Network Monitor","label":"AWS","shortType":"aws_networkmonitor_probe","accent":"#fb923c","defaultName":"networkmonitor_probe","defaults":{},"fields":[],"outputs":["id"],"serviceSlug":"cloudwatch_network_monitor","allowedTargets":["iam_role","security_group","cloudwatch","s3","lambda"]}};
